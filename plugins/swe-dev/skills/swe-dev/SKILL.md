@@ -53,7 +53,7 @@ mcp__claude_ai_Atlassian__getJiraIssue(
 )
 ```
 
-Proceed directly to Step 3 (Implementation) in the current working tree.
+Proceed directly to Step 3 (Planning) in the current working tree.
 
 #### Multiple Tickets Mode
 
@@ -126,12 +126,12 @@ Wave 2 (parallel):  [OBS-4 createOrg] [OBS-5 getOrg]
 Wave 3 (parallel):  [OBS-8 integration tests]
 ```
 
-#### 2c. Present the plan to the user
+#### 2c. Present the wave structure to the user
 
-Before executing, show the plan:
+Show the wave breakdown before proceeding to planning:
 
 ```markdown
-## Implementation Plan
+## Wave Structure
 
 ### Wave 1 (parallel - 3 tickets)
 | Ticket | Summary | Blocked By |
@@ -150,51 +150,205 @@ Before executing, show the plan:
 | Ticket | Reason |
 |--------|--------|
 | OBS-2 | External Setup task (requires human action) |
-
-Proceed? (y/n)
 ```
 
-Wait for user confirmation before executing.
+Proceed to Step 3 (Planning).
 
-### Step 3: Implement Tickets
+### Step 3: Plan Before Implementing (Two-Phase Execution)
 
-#### Single Ticket (current working tree)
+Every ticket goes through a **Plan phase** before implementation. The user reviews and approves plans before any code is written. This applies to both single-ticket and multi-ticket modes.
 
-When implementing a single ticket, work directly in the current repo:
+The two phases are:
+1. **Plan phase**: Read the ticket, read the RFC/PRD, analyze the codebase, produce a detailed implementation plan
+2. **Execute phase**: Implement the approved plan (TDD loop, validation, PR)
 
-1. **Read the ticket description** thoroughly. It contains:
-   - Objective and user story
-   - Context (RFC path, module location, pattern-to-follow, key invariants)
-   - Langfuse Baseline guardrails (what NOT to implement)
-   - Out of scope
-   - Implementation steps with exact file paths
-   - Acceptance criteria (functional Given/When/Then + cross-cutting checklist)
+This separation exists because:
+- Plans are fast to produce and review (minutes, not hours)
+- Catching a wrong approach in a plan is cheap; catching it after implementation is expensive
+- In parallel mode, all plans for a wave can be reviewed as a batch before any agent starts coding
 
-2. **Read the referenced docs** listed in the ticket's Context section:
-   - The RFC file
-   - `CLAUDE.md` for project conventions
-   - `.specs/CONSTITUTION.md` for inviolable rules
-   - `.specs/stack.md` for engineering standards
-   - Any pattern-to-follow file referenced
+#### 3a. Single Ticket Planning
 
-3. **Create feature branch**:
-   ```bash
-   git checkout -b feat/<ticket-key>-<short-description> main
-   ```
+For a single ticket, produce the plan directly in the conversation:
 
-4. **Execute the TDD loop** (see Implementation Loop below)
+```
+1. Read the ticket description thoroughly
+2. Read the referenced docs (RFC, CLAUDE.md, CONSTITUTION.md, stack.md, structure.md)
+3. Read the pattern-to-follow file referenced in the ticket
+4. Explore the relevant parts of the codebase (existing files, adjacent modules, Prisma schema)
+5. Produce an implementation plan (see Plan Template below)
+6. Present the plan and wait for user approval
+7. On approval, proceed to Step 4 (Execute)
+8. On rejection, revise the plan based on user feedback and re-present
+```
 
-5. **Create PR** (see PR Creation below)
+#### 3b. Multi-Ticket / Epic Planning (Parallel)
 
-#### Multiple Tickets / Epic (parallel via worktrees)
-
-Execute waves sequentially, tickets within each wave in parallel:
+For multiple tickets, plan all tickets in the current wave simultaneously using lightweight agents (no worktrees needed since no code is written):
 
 ```
 FOR each wave:
   FOR each ticket in wave (parallel):
     Agent(
-      prompt: <full implementation prompt — see Agent Prompt Template>,
+      prompt: <planning prompt — see Planning Agent Prompt below>,
+      run_in_background: true
+      # No isolation: "worktree" — planning agents only read, they don't write
+    )
+  WAIT for all planning agents to complete
+  COLLECT all plans
+  PRESENT plans as a batch for user review (see Batch Plan Review below)
+  WAIT for user approval (approve all, approve some, reject with feedback)
+  FOR each rejected plan:
+    Revise based on user feedback
+    Re-present for approval
+  PROCEED to Step 4 with approved plans only
+```
+
+#### Plan Template
+
+Each plan should include:
+
+```markdown
+## Plan: <TICKET-KEY> — <ticket summary>
+
+### Approach
+[2-3 sentences: the high-level strategy for implementing this ticket]
+
+### Files to Create
+| File | Purpose |
+|------|---------|
+| [exact path] | [what it contains] |
+
+### Files to Modify
+| File | Change | Langfuse File? |
+|------|--------|----------------|
+| [exact path] | [what changes] | Yes/No |
+
+### Test Strategy
+| Test Case | Type | Given/When/Then |
+|-----------|------|-----------------|
+| [name] | Unit | Given X, When Y, Then Z |
+| [name] | Integration | Given X, When Y, Then Z |
+| [name] | Negative path | Given X, When Y, Then error Z |
+
+### Key Decisions
+- [Decision 1: e.g., "Using Prisma typed client for all queries, no $queryRaw"]
+- [Decision 2: e.g., "Reusing Langfuse's existing protectedOrganizationProcedure, not creating new middleware"]
+
+### Risks / Open Questions
+- [Any ambiguity found in the ticket or RFC that needs clarification]
+- [Any deviation from the ticket's suggested approach, with rationale]
+
+### Estimated Complexity
+[S / M / L — based on number of files, test cases, and integration points]
+```
+
+#### Batch Plan Review (Multi-Ticket Mode)
+
+Present all plans for a wave together for efficient review:
+
+```markdown
+## Wave 1 Plans (3 tickets)
+
+---
+
+### Plan: OBS-3 — Add SaaS columns via Prisma migration
+**Approach**: Create a Prisma migration adding slug (TEXT UNIQUE), status (TEXT DEFAULT 'active'),
+and settings (JSONB DEFAULT '{}') to the organizations table. Update schema.prisma, run db:generate.
+**Files**: 1 new (migration), 1 modified (schema.prisma)
+**Tests**: 3 cases (columns exist, defaults correct, unique constraint on slug)
+**Complexity**: S
+
+---
+
+### Plan: OBS-6 — Add org_id to ClickHouse tables
+**Approach**: Create golang-migrate SQL scripts for traces, observations, scores tables.
+Add org_id String DEFAULT '' column and bloom_filter index with GRANULARITY 1 to each.
+**Files**: 3 new (migration scripts)
+**Tests**: 3 cases (column exists per table, index exists, DEFAULT '' works)
+**Complexity**: S
+
+---
+
+### Plan: OBS-7 — Add env var validation
+**Approach**: Create a Zod schema validating CLICKHOUSE_URL, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD.
+Fail fast on startup if missing. Follow the existing env.mjs pattern in the codebase.
+**Files**: 1 new (validation module), 1 modified (startup entrypoint)
+**Tests**: 2 cases (valid env passes, missing env throws)
+**Complexity**: S
+
+---
+
+Approve all? Or provide feedback on specific plans.
+```
+
+The user can:
+- **Approve all**: "looks good, proceed"
+- **Approve some, reject others**: "OBS-3 and OBS-7 look good. For OBS-6, use a different migration approach..."
+- **Reject all**: "rethink the approach for all of these because..."
+
+Only approved plans proceed to Step 4.
+
+#### Planning Agent Prompt
+
+When spawning a planning agent for parallel plan generation:
+
+```
+You are creating an implementation plan for JIRA ticket <TICKET-KEY>.
+DO NOT write any code. Only produce a plan.
+
+## Ticket Details
+<paste full ticket description from JIRA>
+
+## Instructions
+
+1. Read the reference docs listed in the ticket's Context section:
+   - The RFC file
+   - CLAUDE.md for project conventions
+   - .specs/CONSTITUTION.md for inviolable rules
+   - .specs/stack.md for engineering standards
+   - The pattern-to-follow file referenced in the ticket
+2. Explore the relevant parts of the codebase:
+   - Look at adjacent modules for patterns to follow
+   - Check the Prisma schema for existing models
+   - Read any files the ticket says to modify
+3. Produce a plan following this structure:
+   - Approach (2-3 sentences)
+   - Files to create (exact paths)
+   - Files to modify (exact paths, what changes, whether it's a Langfuse file)
+   - Test strategy (specific test cases in Given/When/Then)
+   - Key decisions (patterns chosen, what's reused vs. new)
+   - Risks / open questions (ambiguities, deviations from ticket)
+   - Estimated complexity (S/M/L)
+4. DO NOT write code, create files, or modify anything
+5. Return the plan as markdown
+```
+
+### Step 4: Execute Approved Plans
+
+After plans are approved, proceed with implementation.
+
+#### Single Ticket Execution (current working tree)
+
+1. **Create feature branch**:
+   ```bash
+   git checkout -b feat/<ticket-key>-<short-description> main
+   ```
+
+2. **Execute the TDD loop** using the approved plan (see Implementation Loop below)
+
+3. **Create PR** (see PR Creation below)
+
+#### Multiple Tickets / Epic Execution (parallel via worktrees)
+
+Execute waves sequentially, tickets within each wave in parallel:
+
+```
+FOR each wave:
+  # Plans for this wave were already approved in Step 3
+  FOR each approved ticket in wave (parallel):
+    Agent(
+      prompt: <full implementation prompt with approved plan — see Agent Prompt Template>,
       isolation: "worktree",
       run_in_background: true
     )
@@ -208,10 +362,20 @@ FOR each wave:
   CHECK if any PRs have merge conflicts with each other:
     IF conflicts: rebase the later PR onto the earlier one
     IF rebase fails: flag for user resolution
-  NEXT wave (agents branch from current main, which now has Wave N's merged PRs)
+  # Before starting next wave:
+  IF next wave has tickets blocked by this wave:
+    PAUSE and ask user to merge blocking PRs
+  # Plan next wave's tickets (they may depend on merged code)
+  RUN Step 3b for next wave's tickets
+  WAIT for plan approval
+  CONTINUE to next wave execution
 ```
 
-**Important**: Wave N+1 agents should only start after Wave N's blocking PRs are merged into `main`. If the user hasn't merged them yet, pause and ask:
+**Important**: Wave N+1 follows this sequence:
+1. Wave N's blocking PRs must be merged into `main`
+2. Plan Wave N+1's tickets (planning agents branch from updated `main`)
+3. User approves Wave N+1 plans
+4. Execute Wave N+1
 
 ```
 Wave 1 complete. 3 PRs created:
@@ -220,7 +384,12 @@ Wave 1 complete. 3 PRs created:
 - PR #14: OBS-7 (env validation)
 
 Wave 2 tickets (OBS-4, OBS-5) are blocked by OBS-3.
-Please merge PR #12 before I proceed with Wave 2.
+Please merge PR #12 before I plan Wave 2.
+
+[After merge]
+
+Planning Wave 2 tickets...
+[Shows Wave 2 plans for approval]
 ```
 
 ### Implementation Loop (Core of Each Agent)
@@ -360,7 +529,7 @@ After all checks pass, create a PR:
    )
    ```
 
-### Step 4: Report Results
+### Step 5: Report Results
 
 After all waves complete, output a summary:
 
@@ -396,7 +565,7 @@ After all waves complete, output a summary:
 
 ## Agent Prompt Template
 
-When spawning a worktree agent for parallel execution, use this prompt structure:
+When spawning a worktree agent for parallel execution, use this prompt structure. The approved plan is included so the agent follows the agreed-upon approach:
 
 ```
 You are implementing JIRA ticket <TICKET-KEY>.
@@ -404,16 +573,23 @@ You are implementing JIRA ticket <TICKET-KEY>.
 ## Ticket Details
 <paste full ticket description from JIRA>
 
+## Approved Implementation Plan
+<paste the plan that was approved by the user in Step 3>
+
+IMPORTANT: Follow this approved plan exactly. Do not deviate from the agreed-upon
+approach, file paths, or test strategy unless you encounter a technical blocker.
+If you must deviate, document the reason in the PR description.
+
 ## Instructions
 
 1. Create a feature branch: feat/<ticket-key>-<short-description>
 2. Read the reference docs listed in the ticket's Context section
-3. Follow the TDD loop:
-   a. Write failing tests first
-   b. Implement the solution
+3. Follow the TDD loop using the test cases from the approved plan:
+   a. Write failing tests first (use the Given/When/Then cases from the plan)
+   b. Implement the solution (create/modify the files listed in the plan)
    c. Run tests until green
    d. Run typecheck (pnpm tc) and formatter (pnpm run format)
-4. Execute manual validation steps from the ticket
+4. Delegate manual validation to the manual-verify plugin (if available)
 5. Run final checks (full test suite, build)
 6. Create a PR following .github/PULL_REQUEST_TEMPLATE.md
 7. Transition the JIRA ticket to "In Review"
@@ -424,6 +600,7 @@ You are implementing JIRA ticket <TICKET-KEY>.
 - All queries must include tenant-scoping (org_id or project_id)
 - Follow the error format from stack.md
 - If a Langfuse file modification is flagged, make the smallest possible change
+- Follow the approved plan — do not add scope or change the approach
 
 ## JIRA Connection
 - Cloud ID: <cloud-id>
