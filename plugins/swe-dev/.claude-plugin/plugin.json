@@ -1,0 +1,9 @@
+{
+  "name": "swe-dev",
+  "description": "Autonomous development from JIRA tickets. Fetches tickets (single ticket or full epic), builds a dependency graph, parallelizes implementation across git worktrees, runs TDD loops, validates locally, and creates one PR per ticket.",
+  "author": {
+    "name": "Utibe Okodi"
+  },
+  "license": "MIT",
+  "keywords": ["jira", "implementation", "tdd", "worktree", "parallel", "autonomous"]
+}
