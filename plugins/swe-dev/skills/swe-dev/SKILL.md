@@ -33,6 +33,15 @@ Invoke this skill when:
 - Development environment set up (`pnpm i`, `.env` configured, infrastructure running)
 - For parallel mode: git worktree support (standard git feature)
 
+## Core Principle: Plan Everything, Execute Nothing Without Approval
+
+Every action that changes code, creates a branch, or makes a PR must be preceded by a plan that the user approves. This applies to:
+- Implementation plans (Step 3)
+- Feature branch creation
+- PR creation
+
+The only actions that happen without explicit approval are read-only operations (fetching tickets, reading files, exploring the codebase). This "plan first, execute second" principle ensures the user always knows what will happen before it happens.
+
 ## Workflow
 
 ### Step 1: Fetch and Analyze Tickets
@@ -103,7 +112,7 @@ Then proceed to Step 2 (Dependency Analysis).
 
 From the fetched tickets, extract:
 - **Blocking links**: "blocks" / "is blocked by" relationships
-- **Ticket type**: Skip External Setup tasks and Terraform tasks (these require human action, not code)
+- **Ticket type**: Skip External Setup tasks (require human action). Delegate Terraform/infrastructure tasks to the `infra-dev` plugin.
 - **Status**: Skip tickets already in "Done" status
 
 Build a directed acyclic graph (DAG) where edges represent "blocked by" relationships.
@@ -125,6 +134,27 @@ Wave 1 (parallel):  [OBS-3 schema] [OBS-6 ClickHouse] [OBS-7 env vars]
 Wave 2 (parallel):  [OBS-4 createOrg] [OBS-5 getOrg]
 Wave 3 (parallel):  [OBS-8 integration tests]
 ```
+
+#### Branching Strategy for Dependent Waves
+
+Wave N+1 tickets MUST wait for their blocker tickets in Wave N to finish implementation. Once the blocker's implementation is complete (PR created, tests passing), Wave N+1 agents branch directly from the blocker's feature branch:
+
+```
+main
+  └── feat/OBS-3-schema-migration  (Wave 1, implementation complete, PR created)
+        └── feat/OBS-4-create-org  (Wave 2, branches from OBS-3's completed branch)
+              └── feat/OBS-8-integration-tests  (Wave 3, branches from OBS-4's completed branch)
+```
+
+This means:
+- Wave N+1 does NOT wait for Wave N PRs to be merged into `main`
+- Wave N+1 branches from the blocker's feature branch as soon as it's complete
+- The PR for Wave N+1 targets `main` (not the blocker branch)
+- When all PRs are merged in order, the chain resolves cleanly
+
+**Key rules**:
+- Implementation must be complete before dependents branch
+- Planning for Wave N+1 happens AFTER Wave N implementation completes, not in parallel. This ensures plans are based on the actual implemented code, not assumptions about how it will look. If a Wave N implementation deviates from its plan (e.g., different file structure, different function signatures), Wave N+1 plans need to account for the real code.
 
 #### 2c. Present the wave structure to the user
 
@@ -150,6 +180,11 @@ Show the wave breakdown before proceeding to planning:
 | Ticket | Reason |
 |--------|--------|
 | OBS-2 | External Setup task (requires human action) |
+
+### Delegated to infra-dev
+| Ticket | Summary |
+|--------|---------|
+| OBS-9 | Provision CloudWatch alarms via Terraform |
 ```
 
 Proceed to Step 3 (Planning).
@@ -176,26 +211,39 @@ For a single ticket, produce the plan directly in the conversation:
 2. Read the referenced docs (RFC, CLAUDE.md, CONSTITUTION.md, stack.md, structure.md)
 3. Read the pattern-to-follow file referenced in the ticket
 4. Explore the relevant parts of the codebase (existing files, adjacent modules, Prisma schema)
-5. Produce an implementation plan (see Plan Template below)
-6. Present the plan and wait for user approval
-7. On approval, proceed to Step 4 (Execute)
-8. On rejection, revise the plan based on user feedback and re-present
+5. Identify any ambiguities, unknowns, or assumptions
+6. If ANYTHING is unclear, ask the user clarifying questions BEFORE producing the plan.
+   Never assume. Examples of things to ask about:
+   - "The ticket says to follow the pattern in RateLimitService.ts, but that file uses
+     a different error format than stack.md specifies. Which should I follow?"
+   - "The RFC says 'use Prisma typed client' but this query requires a window function.
+     Should I use $queryRaw with a justification comment, or restructure the query?"
+   - "The ticket references a Redis key pattern but doesn't specify the TTL. Should I
+     use the same TTL as the billing period, or a fixed duration?"
+7. After clarifications are resolved, produce an implementation plan (see Plan Template below)
+8. Present the plan and wait for user approval
+9. On approval, proceed to Step 4 (Execute)
+10. On rejection, revise the plan based on user feedback and re-present
 ```
 
 #### 3b. Multi-Ticket / Epic Planning (Parallel)
 
-For multiple tickets, plan all tickets in the current wave simultaneously using lightweight agents (no worktrees needed since no code is written):
+For multiple tickets, plan all tickets in the current wave simultaneously. Planning agents use `isolation: "worktree"` so any accidental writes are safely discarded:
 
 ```
 FOR each wave:
   FOR each ticket in wave (parallel):
     Agent(
       prompt: <planning prompt — see Planning Agent Prompt below>,
+      isolation: "worktree",
       run_in_background: true
-      # No isolation: "worktree" — planning agents only read, they don't write
     )
   WAIT for all planning agents to complete
-  COLLECT all plans
+  COLLECT all plans and all clarifying questions
+  IF any planning agent has clarifying questions:
+    PRESENT all questions grouped by ticket
+    WAIT for user answers
+    RE-RUN planning for those tickets with the answers included in the prompt
   PRESENT plans as a batch for user review (see Batch Plan Review below)
   WAIT for user approval (approve all, approve some, reject with feedback)
   FOR each rejected plan:
@@ -235,8 +283,15 @@ Each plan should include:
 - [Decision 1: e.g., "Using Prisma typed client for all queries, no $queryRaw"]
 - [Decision 2: e.g., "Reusing Langfuse's existing protectedOrganizationProcedure, not creating new middleware"]
 
+### Clarifying Questions (if any)
+[Questions that MUST be answered by the user before implementation. Never assume.]
+- [e.g., "The RFC specifies a 300-second TTL for the Redis key, but the PRD says 'short-lived'. Should I use 300 seconds or a different value?"]
+- [e.g., "The ticket says to modify auth.ts, but there are two files matching that pattern. Which one: web/src/server/auth.ts or packages/shared/src/server/auth.ts?"]
+
+If there are no clarifying questions, write: "None — ticket and RFC are unambiguous."
+
 ### Risks / Open Questions
-- [Any ambiguity found in the ticket or RFC that needs clarification]
+- [Risks that don't block implementation but should be noted]
 - [Any deviation from the ticket's suggested approach, with rationale]
 
 ### Estimated Complexity
@@ -245,57 +300,97 @@ Each plan should include:
 
 #### Batch Plan Review (Multi-Ticket Mode)
 
-Present all plans for a wave together for efficient review:
+Each plan in the batch uses the **same full Plan Template** as single-ticket mode. Multi-ticket plans are NOT abbreviated. The user needs the same level of detail to make informed approval decisions regardless of how many tickets are being planned.
+
+Present all plans for a wave together, separated by horizontal rules for readability:
 
 ```markdown
 ## Wave 1 Plans (3 tickets)
 
----
+Use the navigation below to jump to each plan, or review sequentially.
 
-### Plan: OBS-3 — Add SaaS columns via Prisma migration
-**Approach**: Create a Prisma migration adding slug (TEXT UNIQUE), status (TEXT DEFAULT 'active'),
-and settings (JSONB DEFAULT '{}') to the organizations table. Update schema.prisma, run db:generate.
-**Files**: 1 new (migration), 1 modified (schema.prisma)
-**Tests**: 3 cases (columns exist, defaults correct, unique constraint on slug)
-**Complexity**: S
-
----
-
-### Plan: OBS-6 — Add org_id to ClickHouse tables
-**Approach**: Create golang-migrate SQL scripts for traces, observations, scores tables.
-Add org_id String DEFAULT '' column and bloom_filter index with GRANULARITY 1 to each.
-**Files**: 3 new (migration scripts)
-**Tests**: 3 cases (column exists per table, index exists, DEFAULT '' works)
-**Complexity**: S
+| # | Ticket | Summary | Complexity |
+|---|--------|---------|------------|
+| 1 | OBS-3 | Add SaaS columns via Prisma migration | S |
+| 2 | OBS-6 | Add org_id to ClickHouse tables | S |
+| 3 | OBS-7 | Add env var validation | S |
 
 ---
 
-### Plan: OBS-7 — Add env var validation
-**Approach**: Create a Zod schema validating CLICKHOUSE_URL, CLICKHOUSE_USER, CLICKHOUSE_PASSWORD.
-Fail fast on startup if missing. Follow the existing env.mjs pattern in the codebase.
-**Files**: 1 new (validation module), 1 modified (startup entrypoint)
-**Tests**: 2 cases (valid env passes, missing env throws)
-**Complexity**: S
+## Plan 1/3: OBS-3 — Add SaaS columns via Prisma migration
+
+### Approach
+Create a Prisma migration adding slug (TEXT UNIQUE), status (TEXT DEFAULT 'active'),
+and settings (JSONB DEFAULT '{}') to the organizations table. Update schema.prisma,
+run db:generate to regenerate the Prisma client.
+
+### Files to Create
+| File | Purpose |
+|------|---------|
+| packages/shared/prisma/migrations/YYYYMMDD_add_saas_columns/migration.sql | Prisma migration |
+
+### Files to Modify
+| File | Change | Langfuse File? |
+|------|--------|----------------|
+| packages/shared/prisma/schema.prisma | Add slug, status, settings fields to Organization model | Yes |
+
+### Test Strategy
+| Test Case | Type | Given/When/Then |
+|-----------|------|-----------------|
+| Columns exist | Unit | Given a fresh migration, When I query the organizations table, Then slug/status/settings columns exist |
+| Defaults correct | Unit | Given a new organization, When created without explicit values, Then status='active' and settings='{}' |
+| Slug unique | Unit | Given org with slug 'acme', When creating another org with slug 'acme', Then P2002 unique constraint error |
+
+### Key Decisions
+- Using Prisma migration (not raw SQL) since this is a PostgreSQL schema change
+- Adding slug now even though subdomain routing is post-MVP (avoids a future migration)
+
+### Risks / Open Questions
+- None identified
+
+### Estimated Complexity
+S
 
 ---
 
-Approve all? Or provide feedback on specific plans.
-```
+## Plan 2/3: OBS-6 — Add org_id to ClickHouse tables
+[Full Plan Template...]
 
-The user can:
+---
+
+## Plan 3/3: OBS-7 — Add env var validation
+[Full Plan Template...]
+
+---
+
+## Approval
+
+Review each plan above. You can:
 - **Approve all**: "looks good, proceed"
-- **Approve some, reject others**: "OBS-3 and OBS-7 look good. For OBS-6, use a different migration approach..."
+- **Approve some**: "OBS-3 and OBS-7 look good. For OBS-6, use a different migration approach..."
 - **Reject all**: "rethink the approach for all of these because..."
+- **Ask questions**: "For OBS-3, why are we adding slug now if subdomain routing is post-MVP?"
+```
 
 Only approved plans proceed to Step 4.
 
 #### Planning Agent Prompt
 
-When spawning a planning agent for parallel plan generation:
+When spawning a planning agent for parallel plan generation, use `isolation: "worktree"` so any accidental writes are safely discarded:
+
+```
+Agent(
+  prompt: <planning prompt below>,
+  isolation: "worktree",
+  run_in_background: true
+)
+```
+
+Planning prompt:
 
 ```
 You are creating an implementation plan for JIRA ticket <TICKET-KEY>.
-DO NOT write any code. Only produce a plan.
+DO NOT write any code, create files, or modify anything. Only produce a plan.
 
 ## Ticket Details
 <paste full ticket description from JIRA>
@@ -312,16 +407,21 @@ DO NOT write any code. Only produce a plan.
    - Look at adjacent modules for patterns to follow
    - Check the Prisma schema for existing models
    - Read any files the ticket says to modify
-3. Produce a plan following this structure:
+3. Identify any ambiguities, unknowns, or assumptions. If ANYTHING is
+   unclear, include it in a "Clarifying Questions" section. Never assume.
+   The user will answer these questions before the plan is finalized.
+4. Produce a DETAILED plan following this structure:
    - Approach (2-3 sentences)
-   - Files to create (exact paths)
+   - Files to create (exact paths, with purpose for each)
    - Files to modify (exact paths, what changes, whether it's a Langfuse file)
-   - Test strategy (specific test cases in Given/When/Then)
-   - Key decisions (patterns chosen, what's reused vs. new)
+   - Test strategy (specific test cases in Given/When/Then format)
+   - Key decisions (patterns chosen, what's reused vs. new, with rationale)
+   - Clarifying questions (anything unclear — NEVER assume)
    - Risks / open questions (ambiguities, deviations from ticket)
    - Estimated complexity (S/M/L)
-4. DO NOT write code, create files, or modify anything
-5. Return the plan as markdown
+5. DO NOT abbreviate the plan. Include the same level of detail regardless
+   of whether this is for a single ticket or part of a batch.
+6. Return the plan as markdown
 ```
 
 ### Step 4: Execute Approved Plans
@@ -341,7 +441,7 @@ After plans are approved, proceed with implementation.
 
 #### Multiple Tickets / Epic Execution (parallel via worktrees)
 
-Execute waves sequentially, tickets within each wave in parallel:
+Execute waves sequentially, tickets within each wave in parallel. Merge conflict resolution within a wave is the user's responsibility during PR review and merging.
 
 ```
 FOR each wave:
@@ -359,37 +459,81 @@ FOR each wave:
       Transition JIRA ticket to "In Review"
     ELSE:
       Record failure, report to user
-  CHECK if any PRs have merge conflicts with each other:
-    IF conflicts: rebase the later PR onto the earlier one
-    IF rebase fails: flag for user resolution
+  REPORT wave results to user
+  # Merge conflicts between PRs in the same wave are resolved by the user
+  # during PR review and merging — swe-dev does NOT auto-resolve conflicts
   # Before starting next wave:
   IF next wave has tickets blocked by this wave:
-    PAUSE and ask user to merge blocking PRs
-  # Plan next wave's tickets (they may depend on merged code)
-  RUN Step 3b for next wave's tickets
+    PRESENT branching strategy options for next wave:
+      Option A: Merge blocking PRs into main first, then Wave N+1 branches from main
+                (cleanest history, PRs target main with no rebase needed later)
+      Option B: Wave N+1 branches from blocker's completed feature branch
+                (faster, no waiting for merge, but PRs may need rebase after blockers merge)
+      Option C: Merge some blocking PRs, branch from others
+                (hybrid — user picks per-ticket)
+    FOR each ticket in next wave, show:
+      - Which blocker it depends on
+      - The blocker's branch name and PR number
+      - Recommended branching option (A or B) with rationale
+    WAIT for user to choose branching strategy
+    PRESENT full branching plan based on user's choice
+    WAIT for user approval of branching plan
+  # Plan next wave AFTER this wave's implementation is complete
+  # so plans are based on real code, not assumptions
+  RUN Step 3b for next wave's tickets (planning agents read from completed branches)
   WAIT for plan approval
   CONTINUE to next wave execution
 ```
 
 **Important**: Wave N+1 follows this sequence:
-1. Wave N's blocking PRs must be merged into `main`
-2. Plan Wave N+1's tickets (planning agents branch from updated `main`)
-3. User approves Wave N+1 plans
-4. Execute Wave N+1
+1. Wave N's blocking tickets must finish implementation (PR created, tests passing)
+2. Present a **branching plan** for Wave N+1 (which branch each ticket will branch from) and wait for user approval
+3. Plan Wave N+1's tickets (planning agents read from the actual completed code, not assumptions)
+4. User approves Wave N+1 implementation plans
+5. Execute Wave N+1
 
 ```
 Wave 1 complete. 3 PRs created:
-- PR #12: OBS-3 (schema migration)
-- PR #13: OBS-6 (ClickHouse migration)
-- PR #14: OBS-7 (env validation)
+- PR #12: OBS-3 (schema migration) — feat/OBS-3-schema-migration
+- PR #13: OBS-6 (ClickHouse migration) — feat/OBS-6-clickhouse-migration
+- PR #14: OBS-7 (env validation) — feat/OBS-7-env-validation
+
+## Branching Strategy for Wave 2
 
 Wave 2 tickets (OBS-4, OBS-5) are blocked by OBS-3.
-Please merge PR #12 before I plan Wave 2.
+OBS-3 implementation is complete (PR #12, all tests passing).
 
-[After merge]
+### Option A: Merge first, branch from main
+Merge PR #12 into main, then both Wave 2 tickets branch from main.
+- Pro: Clean history, PRs target main directly, no rebase needed
+- Con: Requires merging now (you may want to review PR #12 first)
+- Recommended when: you've already reviewed the blocking PR
+
+| Ticket | Blocked By | Branch From | PR Target |
+|--------|-----------|-------------|-----------|
+| OBS-4 | OBS-3 | main (after PR #12 merged) | main |
+| OBS-5 | OBS-3 | main (after PR #12 merged) | main |
+
+### Option B: Branch from feature branch
+Wave 2 branches from feat/OBS-3-schema-migration without waiting for merge.
+- Pro: Faster, no waiting for merge/review
+- Con: Wave 2 PRs may need rebase after PR #12 is eventually merged
+- Recommended when: dependency chain is deep and you want speed
+
+| Ticket | Blocked By | Branch From | PR Target |
+|--------|-----------|-------------|-----------|
+| OBS-4 | OBS-3 | feat/OBS-3-schema-migration | main |
+| OBS-5 | OBS-3 | feat/OBS-3-schema-migration | main |
+
+### Option C: Hybrid (pick per ticket)
+Choose Option A or B individually for each ticket.
+
+Which option do you prefer? (A / B / C)
+
+[After user chooses]
 
 Planning Wave 2 tickets...
-[Shows Wave 2 plans for approval]
+[Shows full detailed Wave 2 plans for approval]
 ```
 
 ### Implementation Loop (Core of Each Agent)
@@ -555,10 +699,12 @@ After all waves complete, output a summary:
 |--------|-------|---------------|
 | (none) | | |
 
-### Merge Conflicts Resolved
-| PR | Conflicted With | Resolution |
-|----|-----------------|------------|
-| #16 | #15 (same index.ts) | Auto-rebased: both added functions to index.ts |
+### Potential Merge Conflicts
+| PR | May Conflict With | Shared File |
+|----|-------------------|-------------|
+| #16 (OBS-5) | #15 (OBS-4) | packages/shared/src/saas/multi-tenancy/index.ts |
+
+*Merge one PR first, then rebase the other. Conflict resolution is your call.*
 ```
 
 ---
@@ -607,7 +753,7 @@ If you must deviate, document the reason in the PR description.
 - Ticket: <ticket-key>
 
 ## Git
-- Branch from: main
+- Branch from: <main OR blocker's feature branch, as approved in branching plan>
 - PR target: main
 ```
 
@@ -615,12 +761,20 @@ If you must deviate, document the reason in the PR description.
 
 ## Handling Edge Cases
 
-### Ticket has no implementation steps
+### Ticket has no implementation steps (External Setup)
 
-Some tickets (External Setup, Terraform) require human action, not code. The skill should:
+Some tickets (External Setup) require human action, not code. The skill should:
 - Detect the ticket type from its description or JIRA issue type
 - Skip it with a clear message: "OBS-2 is an External Setup task — requires manual configuration, skipping"
 - Do NOT attempt to implement it
+
+### Ticket is a Terraform/infrastructure task
+
+Terraform tasks (CloudWatch alarms, PagerDuty services, AWS provisioning) should be delegated to the `infra-dev` plugin:
+- Detect Terraform tasks from ticket description (mentions Terraform, CloudWatch alarms, infrastructure provisioning, IaC)
+- Report: "OBS-9 is a Terraform task — delegating to infra-dev plugin"
+- Invoke the `infra-dev` plugin with the ticket details
+- If `infra-dev` is not installed, skip and note: "OBS-9 requires infra-dev plugin (not installed)"
 
 ### Ticket references an unimplemented dependency
 
@@ -635,12 +789,19 @@ This means either:
 - The tests are wrong (not testing what they should)
 - Investigate before proceeding. Report to user.
 
-### Rebase conflict during parallel execution
+### Merge conflicts between PRs in the same wave
 
-When two PRs from the same wave conflict:
-1. Attempt automatic rebase of the later PR
-2. Most conflicts in this codebase are additive (two functions added to the same file) and resolve cleanly
-3. If auto-rebase fails, report the conflict to the user with the specific files and let them resolve manually
+Merge conflicts between PRs in the same wave are the user's responsibility. The skill does NOT auto-resolve conflicts because:
+- The user should review and approve all conflict resolutions
+- Merging order is a user decision (which PR goes first affects the rebase)
+- Auto-resolution can silently introduce bugs in non-trivial conflicts
+
+When reporting wave results, note which PRs may conflict:
+```
+Note: PR #15 (OBS-4) and PR #16 (OBS-5) both modify
+packages/shared/src/saas/multi-tenancy/index.ts.
+Merge one first, then the other PR may need a rebase.
+```
 
 ### Ticket description is missing key sections
 
