@@ -1,0 +1,9 @@
+{
+  "name": "pr-reviewer",
+  "description": "Comprehensive PR code review with JIRA context. Fetches JIRA ticket and follows linked documents (PRDs, GitHub markdown, Confluence) up to configurable depth, reviews tests for coverage and black-box philosophy, runs tests locally (skips if CI passed), verifies implementation matches ticket requirements, and reviews code across 8 dimensions: Security, Performance, API/Breaking Changes, Observability, Accessibility, Dependency Risk, Architecture Fit, and Maintainability.",
+  "author": {
+    "name": "Utibe Okodi"
+  },
+  "license": "MIT",
+  "keywords": ["pr", "code-review", "jira", "security", "testing", "observability", "accessibility"]
+}
