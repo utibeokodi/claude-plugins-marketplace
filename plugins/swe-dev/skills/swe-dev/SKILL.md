@@ -579,7 +579,7 @@ LOOP:
   1. Run the specific test suite
   2. Run typecheck: pnpm tc
   3. Run formatter: pnpm run format
-  4. IF all pass → proceed to Phase 4
+  4. IF all pass → proceed to Phase 4 (Final Checks)
   5. IF failures:
      a. Analyze error output
      b. Fix the implementation (not the tests, unless the test itself has a bug)
@@ -590,31 +590,7 @@ LOOP:
      c. If still stuck, report the error to the user and pause
 ```
 
-#### Phase 4: Local Validation
-
-**Delegate all manual verification to the `manual-verify` plugin.**
-
-The `swe-dev` skill does NOT perform manual validation itself. After tests pass, it invokes the `manual-verify` plugin with the ticket's validation steps:
-
-```
-1. Read ticket's "Manual validation" section
-2. Invoke the manual-verify plugin, passing:
-   - The ticket key
-   - The list of manual validation steps from the ticket description
-   - The task type (UI-facing, internal service, BullMQ job)
-   - The relevant dev commands (pnpm run dev:web, pnpm run dev:worker, etc.)
-3. Wait for manual-verify to complete and return results
-4. If manual-verify reports failures:
-   a. Analyze the failure
-   b. Fix the implementation
-   c. Re-run tests (Phase 3)
-   d. Re-invoke manual-verify
-5. Record validation results
-```
-
-If the `manual-verify` plugin is not installed, skip manual validation and note it in the PR description: "Manual verification skipped — manual-verify plugin not available."
-
-#### Phase 5: Final Checks
+#### Phase 4: Final Checks
 
 ```bash
 # Full typecheck across all packages
@@ -673,7 +649,67 @@ After all checks pass, create a PR:
    )
    ```
 
-### Step 5: Report Results
+### Step 5: Manual Verification (Optional)
+
+After the PR is created, invoke the `manual-verify` plugin to validate the implementation via black-box testing. This step is **skipped** when:
+
+- The user passes `--skip-verify` (e.g., `/swe-dev OBS-3 --skip-verify`)
+- The user explicitly declines verification when prompted
+- The ticket is part of a multi-PR set that must be tested together (e.g., a feature that spans multiple tickets and only works once all PRs are merged)
+- The `manual-verify` plugin is not installed
+
+When skipped, note the reason in the PR description: "Manual verification skipped: [reason]."
+
+#### When verification runs
+
+```
+1. Read ticket's "Manual validation" section
+2. Get the PR number from the PR just created in Step 4
+3. Invoke the manual-verify plugin, passing:
+   - ticket_key: The JIRA ticket key
+   - pr_numbers: The PR number from Step 4
+   - validation_steps: The list of manual validation steps from the ticket description
+   - task_type: The kind of feature (UI-facing, internal service, BullMQ job)
+   - dev_commands: The relevant dev commands (pnpm run dev:web, pnpm run dev:worker, etc.)
+4. Wait for manual-verify to complete and return results
+5. If manual-verify reports PASS:
+   - Record validation results for the implementation summary
+6. If manual-verify reports FAIL:
+   a. Analyze the failure description from manual-verify
+   b. Fix the implementation
+   c. Re-run tests (Phase 3)
+   d. Run final checks (Phase 4)
+   e. Push the fix to the existing PR branch
+   f. Re-invoke manual-verify with the same PR number
+7. Record final validation results
+```
+
+#### Multi-ticket / epic mode
+
+In multi-ticket mode, the user chooses the verification strategy before execution begins:
+
+```
+Before starting Wave 1, ask the user:
+
+"How should manual verification be handled?"
+
+Option A: Verify each PR individually after creation (default)
+  - Each ticket is verified independently after its PR is created
+  - Good when tickets are self-contained features
+
+Option B: Skip verification for all PRs (--skip-verify)
+  - No manual verification for any ticket
+  - Good when the feature only works once all PRs are merged
+  - User can run manual-verify manually later: /manual-verify --pr 42,43,44
+
+Option C: Verify only specific tickets
+  - User specifies which tickets should be verified (e.g., "only verify OBS-4 and OBS-5")
+  - Remaining tickets are skipped with reason noted in PR description
+```
+
+The chosen strategy applies to the entire execution run. For Option B, remind the user they can verify all PRs together after merging using `/manual-verify --pr 42,43,44`.
+
+### Step 6: Report Results
 
 After all waves complete, output a summary:
 
@@ -735,10 +771,19 @@ If you must deviate, document the reason in the PR description.
    b. Implement the solution (create/modify the files listed in the plan)
    c. Run tests until green
    d. Run typecheck (pnpm tc) and formatter (pnpm run format)
-4. Delegate manual validation to the manual-verify plugin (if available)
-5. Run final checks (full test suite, build)
-6. Create a PR following .github/PULL_REQUEST_TEMPLATE.md
-7. Transition the JIRA ticket to "In Review"
+4. Run final checks (full test suite, build)
+5. Create a PR following .github/PULL_REQUEST_TEMPLATE.md
+6. Transition the JIRA ticket to "In Review"
+7. If manual verification is enabled (not --skip-verify), invoke the manual-verify
+   plugin with:
+   - ticket_key: <TICKET-KEY>
+   - pr_numbers: <the PR number just created>
+   - validation_steps: <manual validation steps from the ticket description>
+   - task_type: <UI-facing | internal service | BullMQ job>
+   - dev_commands: <pnpm run dev:web, pnpm run dev:worker, etc.>
+   If manual-verify reports FAIL, fix the implementation, re-run tests and final
+   checks, push the fix to the PR branch, and re-invoke manual-verify.
+   If --skip-verify, note in the PR description: "Manual verification skipped: [reason]."
 
 ## Key Rules
 - Tests BEFORE implementation (TDD is mandatory)
