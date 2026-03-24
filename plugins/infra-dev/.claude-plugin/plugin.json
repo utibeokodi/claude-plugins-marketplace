@@ -1,0 +1,9 @@
+{
+  "name": "infra-dev",
+  "description": "Autonomous infrastructure provisioning from JIRA tickets. Writes Terraform configuration for AWS and PagerDuty resources, runs terraform plan/apply with user approval, validates resources via AWS CLI and provider APIs, captures validation screenshots, and creates PRs with proof of provisioning.",
+  "author": {
+    "name": "Utibe Okodi"
+  },
+  "license": "MIT",
+  "keywords": ["terraform", "aws", "pagerduty", "infrastructure", "iac", "cloudwatch"]
+}
