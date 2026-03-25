@@ -9,16 +9,17 @@ Performs end-to-end PR code review by fetching the JIRA ticket and linked docume
 
 ## Overview
 
-This skill reviews a GitHub PR in 8 sequential steps:
+This skill reviews a GitHub PR in 9 sequential steps:
 
 1. Resolve the PR and extract the JIRA ticket key
 2. Fetch the JIRA ticket and follow linked documents for context
-3. Output a context summary so the user understands the PR before seeing findings
-4. Review tests for coverage, black-box philosophy, and structure
-5. Run tests locally (skip if CI already passed)
-6. Review code against ticket requirements
-7. Run 8-dimension code review via parallel subagents
-8. Compile and output the review report
+3. Offer to pull the PR branch locally for review
+4. Output a context summary with per-file change descriptions and VSCode-clickable links
+5. Review tests for coverage, black-box philosophy, and structure
+6. Run tests locally (skip if CI already passed)
+7. Review code against ticket requirements
+8. Run 8-dimension code review via parallel subagents
+9. Compile and output the review report
 
 All write actions (posting GitHub comments) require explicit user approval.
 
@@ -139,7 +140,7 @@ Stop following links when:
 - URL is not accessible (404, auth error) - skip with a note
 - URL does not look like a document (e.g., image files, binary assets)
 
-The PRD is the most important linked document. It contains acceptance criteria and test requirements that inform Steps 4, 5, and 6.
+The PRD is the most important linked document. It contains acceptance criteria and test requirements that inform Steps 5, 6, and 7.
 
 #### If Atlassian MCP Is Not Connected
 
@@ -147,9 +148,43 @@ Output a warning: "Atlassian MCP not configured. Skipping JIRA ticket and linked
 
 Then skip to Step 3 with only PR metadata as context.
 
-### Step 3: Output Context Summary
+### Step 3: Offer to Pull Branch Locally
 
-Before reviewing any code, output a structured summary so the user understands the full context:
+After gathering context, offer to check out the PR branch locally so the user can browse the code in their editor:
+
+```
+Would you like me to pull the PR branch locally for review?
+Branch: <headRefName>
+Command: git fetch origin <headRefName> && git checkout <headRefName>
+```
+
+If the user accepts, run:
+
+```bash
+git fetch origin <headRefName> && git checkout <headRefName>
+```
+
+The local branch name MUST match the remote branch name exactly (e.g., if the remote branch is `feat/PROJ-123-add-auth`, the local branch is also `feat/PROJ-123-add-auth`). Do not rename or prefix the branch.
+
+If the user declines, proceed without checking out.
+
+### Step 4: Output Context Summary
+
+Before reviewing any code, output a structured summary so the user understands the full context.
+
+First, get the list of changed files with their status:
+
+```bash
+gh pr diff <PR-number> --name-only
+```
+
+Also get the diff stat for line counts:
+
+```bash
+gh pr view <PR-number> --json files --jq '.files[] | "\(.path)\t\(.additions)\t\(.deletions)"'
+```
+
+Output the summary using VSCode-clickable file paths with line numbers (format: `file/path.ts:1`):
 
 ```markdown
 ## Context Summary
@@ -171,15 +206,33 @@ Before reviewing any code, output a structured summary so the user understands t
 **CI Status:** <X/Y checks passing | N failed | still running | not configured>
 
 ### What This PR Changes
-<2-4 sentence summary derived from the diff and PR description>
+<2-4 sentence high-level summary derived from the diff and PR description>
 
 ### What The Ticket Requires
 <2-4 sentence summary of the ticket/PRD requirements and acceptance criteria>
+
+### Changed Files
+
+| Status | File | +/- | Summary |
+|--------|------|-----|---------|
+| Added | `src/auth/ratelimit.ts:1` | +120 | Rate limiting middleware for auth endpoints |
+| Modified | `src/auth/middleware.ts:45` | +15/-3 | Added rate limiter integration to auth chain |
+| Modified | `src/config/env.ts:12` | +8/-0 | Added RATE_LIMIT_MAX and RATE_LIMIT_WINDOW env vars |
+| Added | `src/auth/__tests__/ratelimit.test.ts:1` | +85 | Unit tests for rate limiting logic |
+| Modified | `package.json:35` | +2/-0 | Added rate-limiter-flexible dependency |
 ```
+
+File paths MUST use the format `path/to/file.ts:LINE` where LINE is:
+- For **added files**: `:1` (start of file)
+- For **modified files**: the line number of the first change in the diff
+
+This format makes paths clickable in VSCode terminals, allowing the user to jump directly to the relevant code.
+
+Each file gets a one-line summary describing what changed in that file (not just "modified", but the actual nature of the change).
 
 Wait for user acknowledgment or proceed after outputting the summary.
 
-### Step 4: Review Tests
+### Step 5: Review Tests
 
 Fetch the PR diff to identify changed files:
 
@@ -208,7 +261,7 @@ For each issue found, assign a confidence score 0-100:
 - 80-89: Likely issue based on the checklist and observable patterns
 - Below 80: Discard (speculative or context-dependent)
 
-### Step 5: Run Tests (Skip if CI Passed)
+### Step 6: Run Tests (Skip if CI Passed)
 
 Check the CI status collected in Step 1.
 
@@ -238,7 +291,7 @@ Capture stdout and stderr. Report results:
 - **All pass**: `[PASS] Tests: X passed, 0 failed (ran N test files covering changed code)`
 - **Failures**: `[FAIL] Tests: X passed, Y failed` with failure output included in the report (max 50 lines, focused on failure messages)
 
-### Step 6: Review Code Against Ticket Requirements
+### Step 7: Review Code Against Ticket Requirements
 
 With the ticket details, PRD, linked documents, and diff all in context, assess whether the implementation matches the requirements.
 
@@ -255,7 +308,7 @@ Also flag:
 
 If no JIRA ticket was fetched (user said "none"), skip this step and note: "Requirements review skipped (no JIRA ticket provided)."
 
-### Step 7: Eight-Dimension Code Review (Parallel Subagents)
+### Step 8: Eight-Dimension Code Review (Parallel Subagents)
 
 Load `references/review_dimensions.md` for the full checklists.
 
@@ -310,11 +363,11 @@ After all subagents return:
 3. Deduplicate: if two dimensions flag the same file+line+issue, keep the one with higher severity
 4. Sort by severity (critical > high > medium > low), then by confidence descending
 
-### Step 8: Compile and Output Report
+### Step 9: Compile and Output Report
 
 Load `references/output_format.md` for the canonical report template.
 
-Assemble the full report with all findings from Steps 3-7.
+Assemble the full report with all findings from Steps 4-8.
 
 **Default mode (no --comment flag)**: Output the complete report directly in the conversation.
 
@@ -337,7 +390,7 @@ EOF
 ## Edge Cases
 
 ### No JIRA Ticket Found
-Ask the user to provide the ticket key. Offer "none" to proceed with code-only review (Steps 2, 3 context, and 6 requirements review are skipped/reduced).
+Ask the user to provide the ticket key. Offer "none" to proceed with code-only review (Steps 2, 4 context, and 7 requirements review are skipped/reduced).
 
 ### Atlassian MCP Not Connected
 Warn and proceed with code-only review. Note in the report header: "JIRA context unavailable."
