@@ -1,0 +1,9 @@
+{
+  "name": "spec-creator",
+  "description": "Create PRD and RFC specification documents through an iterative, conversational process. Researches the domain, explores existing codebases, asks clarifying questions, then generates specs section-by-section with user review gates.",
+  "author": {
+    "name": "Utibe Okodi"
+  },
+  "license": "MIT",
+  "keywords": ["prd", "rfc", "spec", "requirements", "design", "planning", "ears", "architecture"]
+}

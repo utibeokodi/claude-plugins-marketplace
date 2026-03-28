@@ -43,6 +43,12 @@
       "category": "development"
     },
     {
+      "name": "spec-creator",
+      "description": "Create PRD and RFC specification documents through an iterative, conversational process. Researches the domain with web search, explores existing codebases, asks clarifying questions, then generates specs section-by-section with user review gates using EARS notation for requirements.",
+      "source": "./plugins/spec-creator",
+      "category": "development"
+    },
+    {
       "name": "swe-dev",
       "description": "Autonomous development from JIRA tickets. Fetches tickets (single ticket or full epic), builds a dependency graph, parallelizes implementation across git worktrees, runs TDD loops, validates locally, and creates one PR per ticket.",
       "source": "./plugins/swe-dev",
