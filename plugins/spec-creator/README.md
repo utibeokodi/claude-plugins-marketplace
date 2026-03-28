@@ -85,6 +85,7 @@ Where `{NN}` is a zero-padded sequential number and `{service-slug}` is the keba
 
 | Plugin | Relationship |
 |--------|-------------|
+| `spec-reviewer` | Reviews specs for security, completeness, and consistency before implementation |
 | `rfc-to-jira` | Converts the RFC output into structured JIRA tickets |
 | `swe-dev` | Implements the JIRA tickets produced from the RFC |
 | `pr-reviewer` | Reviews PRs that implement the spec |

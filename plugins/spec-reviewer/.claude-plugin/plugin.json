@@ -1,0 +1,9 @@
+{
+  "name": "spec-reviewer",
+  "description": "Review PRD and RFC specification documents for security vulnerabilities (including cross-spec security regression), completeness gaps, cross-spec consistency, redundancy against existing specs and codebase, functional regression risks, operational readiness, clarity issues, and feasibility concerns. Produces a structured review report with severity-rated findings and actionable recommendations.",
+  "author": {
+    "name": "Utibe Okodi"
+  },
+  "license": "MIT",
+  "keywords": ["review", "security", "spec", "prd", "rfc", "audit", "owasp", "threat-model", "requirements", "redundancy", "regression", "consistency"]
+}
