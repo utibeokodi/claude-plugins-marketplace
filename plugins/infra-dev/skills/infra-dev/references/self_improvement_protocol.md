@@ -55,7 +55,7 @@ Total lessons: {count}
 
 ## Proposed Skill Changes
 
-{If a lesson is clear and repeated enough to warrant a permanent change to the SKILL.md instructions, document the proposed change here. Include which section to modify and the suggested new wording. Proposed changes must keep the skill conforming to Anthropic best practices: SKILL.md under 500 lines (move detail to references/ files), descriptions under 250 characters, and side-effect skills must have disable-model-invocation: true.}
+{If a lesson is clear and repeated enough to warrant a permanent change to the SKILL.md instructions, document the proposed change here. Include which section to modify and the suggested new wording. Proposed changes must keep the skill conforming to Anthropic best practices: SKILL.md under 500 lines (move detail to references/ files) and side-effect skills must have disable-model-invocation: true.}
 
 | # | Section | Current Behavior | Proposed Change | Based on Lessons |
 |---|---------|-----------------|-----------------|------------------|
