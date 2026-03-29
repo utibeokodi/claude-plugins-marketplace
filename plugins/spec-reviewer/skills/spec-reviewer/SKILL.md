@@ -139,7 +139,7 @@ Read `references/review_dimensions.md` to load the full checklist for each dimen
 
 Skip if `--dimension` is set to something other than `security`.
 
-Load the Security section from `references/review_dimensions.md` and evaluate the spec against every applicable checklist item. This covers: authentication and authorization for every endpoint, data protection and encryption for sensitive fields, input validation and injection prevention, secrets management, API security controls (rate limiting, CORS, idempotency), multi-tenancy isolation, STRIDE threat modeling, and cross-spec security regression (the most critical sub-step, checking for trust boundary erosion, privilege escalation paths, data exposure amplification, and tenant isolation regression across service boundaries). A finding in the cross-spec security regression section is always High or Critical severity.
+Load the Security section from `references/review_dimensions.md` for checklists, and `references/review_procedures.md` Step 2 for the detailed sub-step procedures (2a-2h). Execute each sub-step: authentication and authorization audit, data protection audit, input validation and injection audit, secrets management audit, API security audit, multi-tenancy audit, STRIDE threat model, and cross-spec security regression. A finding in the cross-spec security regression section is always High or Critical severity.
 
 **Output:** Present all security findings in a table (see Step 9 for format). Ask the user if they want to proceed to the next dimension or discuss any findings.
 
@@ -151,7 +151,7 @@ Load the Security section from `references/review_dimensions.md` and evaluate th
 
 Skip if `--dimension` is set to something other than `completeness`.
 
-Load the Completeness section from `references/review_dimensions.md`. Check PRD completeness (measurable goals, specific non-goals, EARS criteria covering happy path, error paths, and edge cases, quantified NFRs, and open questions that could block implementation) and RFC completeness (traceability to PRD requirements, fully typed public interface, data model coverage, index justification, complete data flows, error table coverage, environment variables, invariants, dependency lists, independently deployable phases, and service-specific testing requirements). Also check for missing scenarios such as deployment behavior, partial failure handling, external dependency unavailability, and concurrent request handling.
+Load the Completeness section from `references/review_dimensions.md` for checklists, and `references/review_procedures.md` Step 3 for the detailed sub-step procedures (3a-3c: PRD completeness, RFC completeness, missing scenarios).
 
 **Output:** Present completeness findings. Ask if the user wants to proceed.
 
@@ -163,7 +163,7 @@ Load the Completeness section from `references/review_dimensions.md`. Check PRD 
 
 Skip if `--dimension` is set to something other than `consistency`.
 
-Load the Consistency section from `references/review_dimensions.md`. Check internal consistency between PRD and RFC (requirement traceability, response shapes matching data model, error codes matching data flows, naming conventions), cross-spec dangling references in both directions (references the new spec makes to other services that don't resolve, and references existing specs make to the new service that it doesn't fulfill), cross-spec consistency (data ownership conflicts, interface duplication, external service wrapping, dependency direction conflicts, and convention mismatches), and constitution/invariants compliance (every design decision against the project's rules and engineering standards).
+Load the Consistency section from `references/review_dimensions.md` for checklists, and `references/review_procedures.md` Step 4 for the detailed sub-step procedures (4a-4d: internal consistency, cross-spec dangling references, cross-spec consistency, constitution/invariants compliance).
 
 **Output:** Present consistency findings. Ask if the user wants to proceed.
 
@@ -175,7 +175,7 @@ Load the Consistency section from `references/review_dimensions.md`. Check inter
 
 Skip if `--dimension` is set to something other than `redundancy`.
 
-Load the Redundancy section from `references/review_dimensions.md`. Check responsibility redundancy against other specs (full overlap, partial overlap, or intentional duplication with justification), data redundancy (tables that already exist in other specs, data that could be read from an existing service's interface), interface redundancy (endpoints that duplicate existing service exports), and codebase redundancy (capabilities, data models, integrations, and utilities that already exist as working code, including file path and function/class name). For each codebase redundancy finding, recommend one of: Reuse, Extend, Replace, or Justify.
+Load the Redundancy section from `references/review_dimensions.md` for checklists, and `references/review_procedures.md` Step 5 for the detailed sub-step procedures (5a-5d: responsibility redundancy, data redundancy, interface redundancy, codebase redundancy).
 
 **Output:** Present redundancy findings. Ask if the user wants to proceed.
 
@@ -187,9 +187,7 @@ Load the Redundancy section from `references/review_dimensions.md`. Check respon
 
 Skip if `--dimension` is set to something other than `regression`.
 
-Load the Functional Regression section from `references/review_dimensions.md`.
-
-This step evaluates whether implementing the new spec would break or degrade existing functionality. Check behavioral contract violations (modified API contracts, changed semantics, altered defaults/nullability), data flow disruption (new service inserting into existing call chains, changed ordering guarantees, conflicts on shared resources), migration and cutover risks (rolling-deploy safety, coexistence strategy, deprecation timelines), performance regression (latency added to hot paths, increased load on shared infrastructure, fan-out patterns, SLA feasibility given dependency latency), and backward compatibility (additive-only API changes, versioning strategy for breaking changes, feature flags for risky changes).
+Load the Functional Regression section from `references/review_dimensions.md` for checklists, and `references/review_procedures.md` Step 6 for the detailed sub-step procedures (6a-6e: behavioral contract violations, data flow disruption, migration and cutover risks, performance regression, backward compatibility).
 
 **Output:** Present functional regression findings. Ask if the user wants to proceed.
 
@@ -201,7 +199,7 @@ This step evaluates whether implementing the new spec would break or degrade exi
 
 Skip if `--dimension` is set to something other than `operational`.
 
-Load the Operational Readiness section from `references/review_dimensions.md`. Check observability (structured logging, health checks, metrics, alert thresholds, distributed tracing), deployment (deployment strategy, migration handling, rollback plan, feature flags), incident response (graceful degradation, circuit breakers, retry policies with backoff, timeout values, escalation path), and data operations (backup and recovery, schema migration safety, archival, connection pooling).
+Load the Operational Readiness section from `references/review_dimensions.md` for checklists, and `references/review_procedures.md` Step 7 for the detailed sub-step procedures (7a-7d: observability, deployment, incident response, data operations).
 
 **Output:** Present operational readiness findings. Ask if the user wants to proceed.
 
@@ -213,7 +211,7 @@ Load the Operational Readiness section from `references/review_dimensions.md`. C
 
 Skip dimensions not selected by `--dimension`.
 
-Load the Clarity and Feasibility sections from `references/review_dimensions.md`. For clarity, flag vague terms (fast, secure, scalable, robust), unquantified values (timeouts, limits, thresholds without numbers), ambiguous conditionals, untestable EARS criteria, and contradictions between sections. For feasibility, check for circular dependencies, single points of failure, whether performance targets are achievable given the design, potential race conditions, realistic MVP scope, and whether implementation phases are ordered by dependency and risk.
+Load the Clarity and Feasibility sections from `references/review_dimensions.md` for checklists, and `references/review_procedures.md` Step 8 for the detailed sub-step procedures (8a-8b: clarity checks, feasibility checks).
 
 **Output:** Present clarity and feasibility findings. Ask if the user wants to proceed to the final report.
 

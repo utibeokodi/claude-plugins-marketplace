@@ -494,8 +494,6 @@ Load `references/edge_cases.md` and check applicable cases.
 | Worker command | swe-dev / user | `pnpm run dev:worker` |
 | Infrastructure command | swe-dev / user | `pnpm run infra:dev:up` |
 
----
-
 ## Self-Improvement Protocol
 
 Load `references/self_improvement_protocol.md` and follow the protocol described there for monitoring corrections and writing improvement plans.

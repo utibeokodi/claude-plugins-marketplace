@@ -140,11 +140,15 @@ If a codebase exists, explore it to understand:
    - **Responsibilities**: What does each service do? (to detect overlapping scope)
    - **Key invariants**: Rules that cross service boundaries
    This map is used in Steps 4 and 5 to ensure the new spec does not introduce inconsistencies with existing specs.
-5. **Service architecture and data models**: Explore `src/`, `packages/`, `services/` for service patterns; read schema files (Prisma, SQL migrations, ORM models). If a similar service exists (e.g., "subscription service" when building "billing service"), read its spec for conventions.
+5. **Service architecture**: Explore `src/`, `packages/`, `services/` for existing service patterns
+6. **Data models**: Look for schema files (Prisma schema, SQL migrations, ORM models, etc.)
+7. **Existing similar services**: If the user is building a "billing service" and there's already a "subscription service", read its spec for conventions
+
+Determine and note: the tech stack, whether a constitution exists (specs MUST conform), whether global invariants/engineering standards exist (specs must adopt them), whether existing spec documents exist (use their style as reference), the repository structure, and adjacent services the new service will integrate with.
 
 If a constitution or global invariants were found, inform the user: "I found a project constitution at `{path}` and global engineering standards at `{path}`. All generated specs will conform to these rules. I'll flag any areas where the new service may require changes to either document."
 
-**Output at end of Step 2:** Briefly summarize what was learned and acknowledge any tech stack or conventions already discovered so the user doesn't need to repeat them. "I've researched [service type] patterns and explored your codebase. I can see you're using [tech stack] with a [structure]. Now I have some questions to nail down the requirements."
+**Output at end of Step 2:** Briefly summarize what was learned and acknowledge any tech stack or conventions already discovered so the user doesn't need to repeat them.
 
 ---
 
@@ -261,7 +265,7 @@ Draft these based on clarifying question answers:
 - **Assumptions**: Things assumed true that affect the spec if wrong
 - **Open Questions**: Unresolved decisions that came up during clarification
 
-**Constitution conformance check**: After drafting these sections, review every functional requirement from Section 3 and every constraint against the constitution rules. If any requirement or design choice would violate or conflict with a constitution rule, flag it in a "Constitution Conflicts" table with columns: Spec Element, Constitution Rule, Conflict, Proposed Resolution. If no conflicts exist, note: "All requirements conform to the project constitution. No changes needed."
+**Constitution conformance check**: After drafting these sections, review every functional requirement from Section 3 and every constraint against the constitution rules. If any conflicts are found, load `references/conformance_examples.md` for the Constitution Conflicts table format. If no conflicts exist, note: "All requirements conform to the project constitution. No changes needed."
 
 Present all five sections together and ask:
 "Here are the non-functional requirements, integrations, constraints, assumptions, and open questions. Anything to adjust?"
@@ -398,7 +402,7 @@ Present both together and ask for review.
 - Verify testing requirements are met (e.g., tenant isolation integration tests, input validation)
 - Verify authentication and authorization patterns match existing standards
 
-If any RFC design decision conflicts with the constitution or global invariants, present a **Change Proposal** alongside the RFC sections listing: the source document, the rule, the conflict, and the proposed resolution. If no changes are needed, note: "All design decisions conform to the project constitution and global engineering standards."
+If any RFC design decision conflicts with the constitution or global invariants, load `references/conformance_examples.md` for the Change Proposal format and present it alongside the RFC sections. If no changes are needed, note: "All design decisions conform to the project constitution and global engineering standards."
 
 Present all five sections (plus the constitution change proposal if applicable) and ask for review.
 
@@ -482,19 +486,13 @@ These specs are ready for:
 
 If the user says "no" or requests changes: offer to make further edits in the conversation without writing files.
 
----
-
 ## Spec Update Workflow
 
 When update mode is detected in Step 1, load `references/update_workflow.md` and follow the update workflow (Steps U1-U5) described there.
 
----
-
 ## Edge Cases
 
 Load `references/edge_cases.md` and check applicable cases before and during execution.
-
----
 
 ## Self-Improvement Protocol
 

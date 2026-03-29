@@ -193,7 +193,16 @@ Proceed to Step 3 (Planning).
 
 ### Step 3: Plan Before Implementing (Two-Phase Execution)
 
-Every ticket goes through a **Plan phase** before implementation. The user reviews and approves plans before any code is written. Plans are fast to produce and review; catching a wrong approach in a plan is far cheaper than catching it post-implementation.
+Every ticket goes through a **Plan phase** before implementation. The user reviews and approves plans before any code is written. This applies to both single-ticket and multi-ticket modes.
+
+The two phases are:
+1. **Plan phase**: Read the ticket, read the RFC/PRD, analyze the codebase, produce a detailed implementation plan
+2. **Execute phase**: Implement the approved plan (TDD loop, validation, PR)
+
+This separation exists because:
+- Plans are fast to produce and review (minutes, not hours)
+- Catching a wrong approach in a plan is cheap; catching it after implementation is expensive
+- In parallel mode, all plans for a wave can be reviewed as a batch before any agent starts coding
 
 #### 3a. Single Ticket Planning
 
@@ -203,14 +212,21 @@ For a single ticket, produce the plan directly in the conversation:
 1. Read the ticket description thoroughly
 2. Read the referenced docs (RFC, CLAUDE.md, CONSTITUTION.md, stack.md, structure.md)
 3. Read the pattern-to-follow file referenced in the ticket
-4. Explore relevant codebase areas (existing files, adjacent modules, Prisma schema)
-5. If ANYTHING is unclear, ask the user clarifying questions BEFORE producing the plan.
-   Never assume — ask about conflicting patterns, ambiguous specs, missing values.
-6. After clarifications are resolved, produce an implementation plan
-7. Load `references/plan_template.md` and use it to structure the implementation plan.
-8. Present the plan and wait for user approval
-9. On approval, proceed to Step 4 (Execute)
-10. On rejection, revise based on user feedback and re-present
+4. Explore the relevant parts of the codebase (existing files, adjacent modules, Prisma schema)
+5. Identify any ambiguities, unknowns, or assumptions
+6. If ANYTHING is unclear, ask the user clarifying questions BEFORE producing the plan.
+   Never assume. Examples of things to ask about:
+   - "The ticket says to follow the pattern in RateLimitService.ts, but that file uses
+     a different error format than stack.md specifies. Which should I follow?"
+   - "The RFC says 'use Prisma typed client' but this query requires a window function.
+     Should I use $queryRaw with a justification comment, or restructure the query?"
+   - "The ticket references a Redis key pattern but doesn't specify the TTL. Should I
+     use the same TTL as the billing period, or a fixed duration?"
+7. After clarifications are resolved, produce an implementation plan
+8. Load `references/plan_template.md` and use it to structure the implementation plan.
+9. Present the plan and wait for user approval
+10. On approval, proceed to Step 4 (Execute)
+11. On rejection, revise the plan based on user feedback and re-present
 ```
 
 #### 3b. Multi-Ticket / Epic Planning (Parallel)
@@ -364,25 +380,7 @@ After the PR is created, invoke the `manual-verify` plugin to validate the imple
 
 When skipped, note the reason in the PR description: "Manual verification skipped: [reason]."
 
-#### When verification runs
-
-```
-1. Read ticket's "Manual validation" section
-2. Invoke the manual-verify plugin with: ticket_key, pr_numbers, validation_steps,
-   task_type (UI-facing | internal service | BullMQ job), dev_commands
-3. If PASS: record validation results
-4. If FAIL: fix implementation, re-run tests and final checks, push fix, re-invoke
-```
-
-#### Multi-ticket / epic mode
-
-Before starting Wave 1, ask the user which verification strategy to use:
-
-- **Option A** (default): Verify each PR individually after creation
-- **Option B** (`--skip-verify`): Skip all; user runs `/manual-verify --pr 42,43,44` after merging
-- **Option C**: Verify only specified tickets; skip rest with reason noted in PR description
-
-The chosen strategy applies to the entire execution run.
+Load `references/verification_protocol.md` for the full verification procedure and multi-ticket verification strategy options.
 
 ### Step 6: Report Results
 
