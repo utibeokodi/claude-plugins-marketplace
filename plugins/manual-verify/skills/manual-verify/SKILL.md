@@ -1,6 +1,8 @@
 ---
 name: manual-verify
 description: This skill should be used for black-box manual QA verification of UI and application features via Playwright. Triggers on requests like "manually verify this ticket", "test the UI for OBS-3", "/manual-verify OBS-3", "/manual-verify OBS-3 --pr 42", "/manual-verify --pr 42,43,44", or when swe-dev delegates manual validation after tests pass. Supports single PRs or multiple PRs (merges branches into a temporary verification branch). Launches a headed browser, navigates the application using JIRA ticket context and Langfuse documentation, executes validation steps, captures video and screenshot evidence, and returns structured pass/fail results.
+argument-hint: "[TICKET-KEY...] [--pr PR-NUMBER,...]"
+disable-model-invocation: true
 ---
 
 # Manual Verify: Black-Box QA Verification via Playwright
@@ -111,27 +113,7 @@ Extract from the PR description:
 
 Based on the feature area identified in 1a/1b, fetch the relevant Langfuse documentation page. This provides the QA tester's mental model of how the standard UI works.
 
-**Documentation URL mapping by feature area:**
-
-| Feature Area | Documentation URL |
-|-------------|-------------------|
-| Tracing / Traces | `https://langfuse.com/docs/observability/overview` |
-| Sessions | `https://langfuse.com/docs/observability/features/sessions` |
-| Generations / Observations | `https://langfuse.com/docs/observability/features/observation-types` |
-| Token & Cost Tracking | `https://langfuse.com/docs/observability/features/token-and-cost-tracking` |
-| Environments | `https://langfuse.com/docs/observability/features/environments` |
-| Prompt Management | `https://langfuse.com/docs/prompt-management/overview` |
-| LLM Playground | `https://langfuse.com/docs/prompt-management/features/playground` |
-| Datasets | `https://langfuse.com/docs/evaluation/features/datasets` |
-| Prompt Experiments | `https://langfuse.com/docs/evaluation/features/prompt-experiments` |
-| Annotation Queues | `https://langfuse.com/docs/evaluation/evaluation-methods/annotation-queues` |
-| LLM-as-a-Judge | `https://langfuse.com/docs/evaluation/evaluation-methods/llm-as-a-judge` |
-| Scores | `https://langfuse.com/docs/scores/annotation` |
-| Custom Dashboards | `https://langfuse.com/docs/metrics/features/custom-dashboards` |
-| Settings / RBAC | `https://langfuse.com/docs/administration/rbac` |
-| Auth / SSO | `https://langfuse.com/self-hosting/security/authentication-and-sso` |
-
-Fetch the relevant page(s) using `WebFetch`. Only fetch docs for the specific feature area being tested, not the entire documentation site.
+Load `references/feature_doc_urls.md` for the feature-to-documentation URL mapping.
 
 #### 1d. Build the test context summary
 
@@ -337,44 +319,7 @@ If the server fails to start within 60 seconds, report the failure and stop.
 
 Write and execute a Node.js script to launch a headed Playwright browser with video recording:
 
-```javascript
-// launch-browser.js
-const { chromium } = require('playwright');
-
-(async () => {
-  const browser = await chromium.launch({
-    headless: false,  // Headed mode: user can watch
-    slowMo: 500       // Slow down actions so user can follow along
-  });
-
-  const context = await browser.newContext({
-    recordVideo: {
-      dir: 'validation/<ticket-key>/videos/',
-      size: { width: 1280, height: 720 }
-    },
-    viewport: { width: 1280, height: 720 }
-  });
-
-  // Capture console errors
-  const consoleErrors = [];
-  const page = await context.newPage();
-  page.on('console', msg => {
-    if (msg.type() === 'error') consoleErrors.push(msg.text());
-  });
-  page.on('pageerror', err => consoleErrors.push(err.message));
-
-  // ... validation steps executed here ...
-
-  // Save console errors
-  require('fs').writeFileSync(
-    'validation/<ticket-key>/logs/console-errors.log',
-    consoleErrors.join('\n')
-  );
-
-  await context.close();
-  await browser.close();
-})();
-```
+Load `references/playwright_launch_script.js` as the base template for launching Playwright with video recording and console error capture. Adapt the validation steps for the current ticket.
 
 **Important**: The skill writes a fresh Playwright script for each test run. It does NOT maintain a library of reusable scripts. Each script is tailored to the specific validation steps from the JIRA ticket.
 
@@ -501,71 +446,13 @@ validation/<ticket-key>/
 
 #### Generate the validation report
 
-Write `validation/<ticket-key>/report.md`:
-
-```markdown
-# Validation Report: <TICKET-KEY>
-
-**Date**: <timestamp>
-**Status**: PASS / FAIL / PARTIAL
-**Branch**: <branch name or temporary merge branch>
-**PRs verified**: <PR number(s)>
-**Steps**: X passed, Y failed, Z skipped
-
-## Results
-
-### Step 1: [validation step name]
-**Status**: PASS
-**Expected**: [from JIRA ticket]
-**Actual**: [from accessibility snapshot / screenshot analysis]
-**Evidence**: [screenshots/step-1-before.png](screenshots/step-1-before.png), [screenshots/step-1-after.png](screenshots/step-1-after.png)
-
-### Step 2: [validation step name]
-**Status**: FAIL
-**Expected**: [from JIRA ticket]
-**Actual**: [what actually happened]
-**Evidence**: [screenshots/step-2-failure.png](screenshots/step-2-failure.png)
-**Failure details**: [Specific, actionable description of what went wrong.
-Include what the user would see, not implementation details.]
-
-## Console Errors
-[Any browser console errors captured during the session.
-Only include errors that occurred during validation steps, not pre-existing noise.]
-
-## Video Recording
-Full session: [videos/full-session.webm](videos/full-session.webm)
-```
+Load `references/report_templates.md` for the `report.md` format. Write `validation/<ticket-key>/report.md` using the Validation Report template in that file.
 
 ### Step 8: Return Results and Clean Up
 
 #### When called by swe-dev
 
-Return a structured result that swe-dev can act on:
-
-```markdown
-## manual-verify result: <TICKET-KEY>
-
-**Status**: PASS | FAIL
-**Summary**: [One-line summary, e.g., "UI verified" or "Filter panel does not render after page load"]
-**Branch**: <branch name or temporary merge branch>
-**PRs verified**: <PR number(s)>
-**Cleanup**: <"No cleanup needed" for single PR, or "Temporary branch deleted, returned to <original-branch>" for multi-PR>
-
-### Steps
-| # | Step | Status | Evidence |
-|---|------|--------|----------|
-| 1 | [name] | PASS | step-1-after.png |
-| 2 | [name] | FAIL | step-2-failure.png |
-
-### Failure Details (if any)
-[For each failed step, describe:]
-- What was expected (from the JIRA ticket)
-- What actually happened (from the browser)
-- Screenshot reference
-
-### Evidence Directory
-validation/<ticket-key>/
-```
+Return a structured result that swe-dev can act on. Load `references/report_templates.md` for the swe-dev Result Format template.
 
 **On FAIL**: swe-dev will analyze the failure details, fix the implementation, re-run tests, and re-invoke manual-verify. The failure description must be specific enough for swe-dev to identify what to fix WITHOUT reading the validation report's screenshots (since swe-dev is a text-based agent). Describe failures in terms of user-visible behavior: "The 'Create Organization' button is present but clicking it shows a 500 error toast" rather than "The API returned a 500."
 
@@ -579,103 +466,13 @@ Present the full validation report in the conversation, including:
 - Any console errors
 - Recommendations for failed steps
 
----
-
 ## Langfuse UI Navigation Reference
 
-The Langfuse UI follows consistent patterns. This reference helps navigate the standard product. Custom features added on top of Langfuse are navigated using instructions from the JIRA ticket.
-
-### Application Structure
-
-- **URL pattern**: `/project/[projectId]/[feature]`
-- **Navigation**: Left sidebar with collapsible sections
-- **Switchers**: Organization switcher and project switcher in the top navigation bar
-- **Environment filter**: Global dropdown in the nav bar, applies across all views
-
-### Standard Page Types
-
-**List pages** (Traces, Sessions, Generations, Users, Prompts, Scores, Datasets):
-- Table with sortable columns, pagination
-- Filter panel (sidebar or inline)
-- Row click opens detail view
-- Batch operations via checkboxes + "Actions" menu
-
-**Detail pages** (Trace detail, Session detail, Prompt detail):
-- Header with metadata
-- Tabbed content areas
-- Related items (e.g., trace shows observations tree)
-
-**Settings pages** (Organization settings, Project settings):
-- Sidebar navigation by settings category
-- Forms for configuration
-- API key management
-
-### Common UI Patterns
-
-- **Toasts**: Appear top-right for success/error feedback
-- **Modals/Dialogs**: Overlay for confirmations, forms, creation flows
-- **Loading states**: Skeleton loaders or spinners while data loads
-- **Empty states**: Message shown when no data matches filters
-- **Tables**: All data tables support column visibility, sorting, and filtering
-
----
+Load `references/langfuse_ui_reference.md` for standard Langfuse UI navigation patterns.
 
 ## Handling Edge Cases
 
-### Validation step references a feature that does not exist
-
-If a validation step describes UI that is not found on the page:
-1. Take a screenshot showing what IS on the page
-2. Mark the step as FAIL
-3. In the failure description, note: "Expected [feature from ticket] but the page shows [actual content]"
-4. Continue to the next step
-
-### Application crashes or shows an error page
-
-1. Take a screenshot of the error
-2. Capture the browser console errors
-3. Mark the current step as FAIL
-4. Attempt to navigate back to a known page (e.g., project dashboard)
-5. If the app is unrecoverable, mark all remaining steps as SKIP with reason: "Application error, could not continue"
-
-### Validation step is ambiguous
-
-If the JIRA ticket's validation step is unclear about what exactly to check:
-1. Execute the step as best understood from the ticket description
-2. Note the ambiguity in the validation report
-3. Mark as PASS if the most reasonable interpretation of the expected outcome is met
-4. Never read source code to resolve the ambiguity
-
-### Dev server is slow or unresponsive
-
-- Increase wait timeouts to 30 seconds for initial page loads
-- If a page does not load within 30 seconds, mark the step as FAIL with "Page did not load within 30 seconds"
-- Do NOT assume the dev server is broken after one slow response. Retry once.
-
-### Feature requires specific test data
-
-If the validation step assumes data exists (e.g., "verify the traces table shows traces"):
-1. Check if the JIRA ticket includes setup instructions for test data
-2. If no setup instructions, note in the report: "Step requires test data that was not specified in the ticket"
-3. Mark as SKIP if data is required but unavailable
-
-### Non-UI task types
-
-For `internal service` or `BullMQ job` task types, the skill adjusts its approach:
-
-**Internal service (API only)**:
-- Execute API requests directly in the terminal using `curl` or `httpie`
-- Take a screenshot of the terminal showing the full request and response (command, headers, status code, response body)
-- Verify API responses match expected outcomes from the JIRA ticket
-- Save terminal screenshots as evidence (e.g., `step-N-api-request.png`)
-- For multi-step API flows (e.g., create then retrieve), capture each request/response pair as a separate screenshot
-
-**BullMQ job**:
-- Start the worker using the provided dev command
-- Trigger the job as described in the JIRA ticket
-- Verify outcomes by running terminal commands (database queries, queue inspection, API calls) as described in the ticket
-- Take screenshots of the terminal output showing the verification results
-- If the ticket does not describe how to verify the job, mark as SKIP
+Load `references/edge_cases.md` and check applicable cases.
 
 ---
 
@@ -701,68 +498,4 @@ For `internal service` or `BullMQ job` task types, the skill adjusts its approac
 
 ## Self-Improvement Protocol
 
-This skill tracks corrections and improvements over time. When the user corrects Claude's behavior while this skill is active, the skill writes those observations to an improvement plan file in the marketplace repository. These plans are later reviewed by the skill author to implement permanent changes to the skill.
-
-### During Execution: Monitor for Corrections
-
-While executing this skill's workflow, watch for signals that the user is correcting your behavior:
-
-**Correction signals to watch for:**
-- Direct corrections: "no", "don't do that", "stop", "wrong", "that's not right", "I said..."
-- Redirection: "instead, do X", "I meant Y", "use Z approach"
-- Repeated instructions: the user restating something they already said (indicates you missed it)
-- Frustration indicators: "again", "I already told you", "as I said before"
-- Preference expressions: "I prefer", "always do X", "never do Y"
-- Approval of non-obvious approaches: "yes exactly", "perfect", "that's the right way" (for approaches that were judgment calls, not obvious from the instructions)
-
-**What to capture for each correction:**
-1. **What you did wrong** (or what non-obvious approach worked well)
-2. **What the user wanted instead** (or confirmed as correct)
-3. **Which workflow step it relates to**
-4. **Why the correction matters** (impact on output quality)
-
-### Writing Improvements
-
-After the skill's workflow completes (or at natural breakpoints if the session is long), write or update the improvement plan file at:
-
-```
-/Applications/workspace/gen-ai-projects/utibes-plugins-marketplace/improvement-plans/manual-verify.md
-```
-
-Use this format:
-
-```markdown
-# Improvement Plan: manual-verify
-
-Last updated: {date}
-Total lessons: {count}
-
-## Lessons Learned
-
-### Lesson {N}: {short title}
-- **Date:** {date}
-- **Workflow Step:** {step name/number}
-- **What happened:** {what you did that was corrected, or what approach was confirmed}
-- **What to do instead:** {the correct behavior, or the confirmed approach to keep using}
-- **Why:** {why this matters for output quality}
-
-## Patterns to Watch For
-
-{Summarize recurring themes from the lessons above. For example, if the user has corrected selector strategies multiple times, note: "User prefers role-based selectors over text content selectors when both are available."}
-
-## Proposed Skill Changes
-
-{If a lesson is clear and repeated enough to warrant a permanent change to the SKILL.md instructions, document the proposed change here. Include which section to modify and the suggested new wording.}
-
-| # | Section | Current Behavior | Proposed Change | Based on Lessons |
-|---|---------|-----------------|-----------------|------------------|
-| 1 | {section} | {what the skill currently says} | {what it should say} | Lessons {N, M} |
-```
-
-### Rules
-
-1. **Never modify SKILL.md directly.** All improvements go to the improvement plan file as proposals for the skill author.
-2. **Be specific.** "Validation failed" is useless. "User wants screenshot evidence captured even for passing steps, not just failures" is actionable.
-3. **Capture successes too.** If you made a judgment call and the user confirmed it was right, record that as a positive lesson so future sessions maintain that behavior.
-4. **Deduplicate.** If a new correction matches an existing lesson, update the existing lesson's count or add context rather than creating a duplicate.
-5. **Keep it concise.** Target under 50 lessons; if it grows beyond that, consolidate related lessons into patterns.
+Load `references/self_improvement_protocol.md` and follow the protocol described there for monitoring corrections and writing improvement plans.

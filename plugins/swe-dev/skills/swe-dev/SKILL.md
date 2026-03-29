@@ -1,6 +1,8 @@
 ---
 name: swe-dev
 description: This skill should be used when implementing JIRA tickets autonomously. Triggers on requests like "implement this ticket", "implement this epic", "/swe-dev OBS-3", "/swe-dev OBS-1 (epic)", or when users want to take JIRA tickets and turn them into implemented code with tests, validation, and PRs. Supports single tickets, multiple tickets, or full epics with parallel execution via git worktrees.
+argument-hint: "TICKET-KEY [, TICKET-KEY...] [--skip-verify]"
+disable-model-invocation: true
 ---
 
 # SWE Dev: Autonomous Implementation from JIRA Tickets
@@ -191,16 +193,7 @@ Proceed to Step 3 (Planning).
 
 ### Step 3: Plan Before Implementing (Two-Phase Execution)
 
-Every ticket goes through a **Plan phase** before implementation. The user reviews and approves plans before any code is written. This applies to both single-ticket and multi-ticket modes.
-
-The two phases are:
-1. **Plan phase**: Read the ticket, read the RFC/PRD, analyze the codebase, produce a detailed implementation plan
-2. **Execute phase**: Implement the approved plan (TDD loop, validation, PR)
-
-This separation exists because:
-- Plans are fast to produce and review (minutes, not hours)
-- Catching a wrong approach in a plan is cheap; catching it after implementation is expensive
-- In parallel mode, all plans for a wave can be reviewed as a batch before any agent starts coding
+Every ticket goes through a **Plan phase** before implementation. The user reviews and approves plans before any code is written. Plans are fast to produce and review; catching a wrong approach in a plan is far cheaper than catching it post-implementation.
 
 #### 3a. Single Ticket Planning
 
@@ -210,20 +203,14 @@ For a single ticket, produce the plan directly in the conversation:
 1. Read the ticket description thoroughly
 2. Read the referenced docs (RFC, CLAUDE.md, CONSTITUTION.md, stack.md, structure.md)
 3. Read the pattern-to-follow file referenced in the ticket
-4. Explore the relevant parts of the codebase (existing files, adjacent modules, Prisma schema)
-5. Identify any ambiguities, unknowns, or assumptions
-6. If ANYTHING is unclear, ask the user clarifying questions BEFORE producing the plan.
-   Never assume. Examples of things to ask about:
-   - "The ticket says to follow the pattern in RateLimitService.ts, but that file uses
-     a different error format than stack.md specifies. Which should I follow?"
-   - "The RFC says 'use Prisma typed client' but this query requires a window function.
-     Should I use $queryRaw with a justification comment, or restructure the query?"
-   - "The ticket references a Redis key pattern but doesn't specify the TTL. Should I
-     use the same TTL as the billing period, or a fixed duration?"
-7. After clarifications are resolved, produce an implementation plan (see Plan Template below)
+4. Explore relevant codebase areas (existing files, adjacent modules, Prisma schema)
+5. If ANYTHING is unclear, ask the user clarifying questions BEFORE producing the plan.
+   Never assume — ask about conflicting patterns, ambiguous specs, missing values.
+6. After clarifications are resolved, produce an implementation plan
+7. Load `references/plan_template.md` and use it to structure the implementation plan.
 8. Present the plan and wait for user approval
 9. On approval, proceed to Step 4 (Execute)
-10. On rejection, revise the plan based on user feedback and re-present
+10. On rejection, revise based on user feedback and re-present
 ```
 
 #### 3b. Multi-Ticket / Epic Planning (Parallel)
@@ -234,7 +221,7 @@ For multiple tickets, plan all tickets in the current wave simultaneously. Plann
 FOR each wave:
   FOR each ticket in wave (parallel):
     Agent(
-      prompt: <planning prompt — see Planning Agent Prompt below>,
+      prompt: <planning prompt — load references/planning_agent_prompt.md>,
       isolation: "worktree",
       run_in_background: true
     )
@@ -244,7 +231,7 @@ FOR each wave:
     PRESENT all questions grouped by ticket
     WAIT for user answers
     RE-RUN planning for those tickets with the answers included in the prompt
-  PRESENT plans as a batch for user review (see Batch Plan Review below)
+  Load `references/batch_plan_review.md` for the batch plan review format and present plans using that structure.
   WAIT for user approval (approve all, approve some, reject with feedback)
   FOR each rejected plan:
     Revise based on user feedback
@@ -252,177 +239,7 @@ FOR each wave:
   PROCEED to Step 4 with approved plans only
 ```
 
-#### Plan Template
-
-Each plan should include:
-
-```markdown
-## Plan: <TICKET-KEY> — <ticket summary>
-
-### Approach
-[2-3 sentences: the high-level strategy for implementing this ticket]
-
-### Files to Create
-| File | Purpose |
-|------|---------|
-| [exact path] | [what it contains] |
-
-### Files to Modify
-| File | Change | Langfuse File? |
-|------|--------|----------------|
-| [exact path] | [what changes] | Yes/No |
-
-### Test Strategy
-| Test Case | Type | Given/When/Then |
-|-----------|------|-----------------|
-| [name] | Unit | Given X, When Y, Then Z |
-| [name] | Integration | Given X, When Y, Then Z |
-| [name] | Negative path | Given X, When Y, Then error Z |
-
-### Key Decisions
-- [Decision 1: e.g., "Using Prisma typed client for all queries, no $queryRaw"]
-- [Decision 2: e.g., "Reusing Langfuse's existing protectedOrganizationProcedure, not creating new middleware"]
-
-### Clarifying Questions (if any)
-[Questions that MUST be answered by the user before implementation. Never assume.]
-- [e.g., "The RFC specifies a 300-second TTL for the Redis key, but the PRD says 'short-lived'. Should I use 300 seconds or a different value?"]
-- [e.g., "The ticket says to modify auth.ts, but there are two files matching that pattern. Which one: web/src/server/auth.ts or packages/shared/src/server/auth.ts?"]
-
-If there are no clarifying questions, write: "None — ticket and RFC are unambiguous."
-
-### Risks / Open Questions
-- [Risks that don't block implementation but should be noted]
-- [Any deviation from the ticket's suggested approach, with rationale]
-
-### Estimated Complexity
-[S / M / L — based on number of files, test cases, and integration points]
-```
-
-#### Batch Plan Review (Multi-Ticket Mode)
-
-Each plan in the batch uses the **same full Plan Template** as single-ticket mode. Multi-ticket plans are NOT abbreviated. The user needs the same level of detail to make informed approval decisions regardless of how many tickets are being planned.
-
-Present all plans for a wave together, separated by horizontal rules for readability:
-
-```markdown
-## Wave 1 Plans (3 tickets)
-
-Use the navigation below to jump to each plan, or review sequentially.
-
-| # | Ticket | Summary | Complexity |
-|---|--------|---------|------------|
-| 1 | OBS-3 | Add SaaS columns via Prisma migration | S |
-| 2 | OBS-6 | Add org_id to ClickHouse tables | S |
-| 3 | OBS-7 | Add env var validation | S |
-
----
-
-## Plan 1/3: OBS-3 — Add SaaS columns via Prisma migration
-
-### Approach
-Create a Prisma migration adding slug (TEXT UNIQUE), status (TEXT DEFAULT 'active'),
-and settings (JSONB DEFAULT '{}') to the organizations table. Update schema.prisma,
-run db:generate to regenerate the Prisma client.
-
-### Files to Create
-| File | Purpose |
-|------|---------|
-| packages/shared/prisma/migrations/YYYYMMDD_add_saas_columns/migration.sql | Prisma migration |
-
-### Files to Modify
-| File | Change | Langfuse File? |
-|------|--------|----------------|
-| packages/shared/prisma/schema.prisma | Add slug, status, settings fields to Organization model | Yes |
-
-### Test Strategy
-| Test Case | Type | Given/When/Then |
-|-----------|------|-----------------|
-| Columns exist | Unit | Given a fresh migration, When I query the organizations table, Then slug/status/settings columns exist |
-| Defaults correct | Unit | Given a new organization, When created without explicit values, Then status='active' and settings='{}' |
-| Slug unique | Unit | Given org with slug 'acme', When creating another org with slug 'acme', Then P2002 unique constraint error |
-
-### Key Decisions
-- Using Prisma migration (not raw SQL) since this is a PostgreSQL schema change
-- Adding slug now even though subdomain routing is post-MVP (avoids a future migration)
-
-### Risks / Open Questions
-- None identified
-
-### Estimated Complexity
-S
-
----
-
-## Plan 2/3: OBS-6 — Add org_id to ClickHouse tables
-[Full Plan Template...]
-
----
-
-## Plan 3/3: OBS-7 — Add env var validation
-[Full Plan Template...]
-
----
-
-## Approval
-
-Review each plan above. You can:
-- **Approve all**: "looks good, proceed"
-- **Approve some**: "OBS-3 and OBS-7 look good. For OBS-6, use a different migration approach..."
-- **Reject all**: "rethink the approach for all of these because..."
-- **Ask questions**: "For OBS-3, why are we adding slug now if subdomain routing is post-MVP?"
-```
-
-Only approved plans proceed to Step 4.
-
-#### Planning Agent Prompt
-
-When spawning a planning agent for parallel plan generation, use `isolation: "worktree"` so any accidental writes are safely discarded:
-
-```
-Agent(
-  prompt: <planning prompt below>,
-  isolation: "worktree",
-  run_in_background: true
-)
-```
-
-Planning prompt:
-
-```
-You are creating an implementation plan for JIRA ticket <TICKET-KEY>.
-DO NOT write any code, create files, or modify anything. Only produce a plan.
-
-## Ticket Details
-<paste full ticket description from JIRA>
-
-## Instructions
-
-1. Read the reference docs listed in the ticket's Context section:
-   - The RFC file
-   - CLAUDE.md for project conventions
-   - .specs/CONSTITUTION.md for inviolable rules
-   - .specs/stack.md for engineering standards
-   - The pattern-to-follow file referenced in the ticket
-2. Explore the relevant parts of the codebase:
-   - Look at adjacent modules for patterns to follow
-   - Check the Prisma schema for existing models
-   - Read any files the ticket says to modify
-3. Identify any ambiguities, unknowns, or assumptions. If ANYTHING is
-   unclear, include it in a "Clarifying Questions" section. Never assume.
-   The user will answer these questions before the plan is finalized.
-4. Produce a DETAILED plan following this structure:
-   - Approach (2-3 sentences)
-   - Files to create (exact paths, with purpose for each)
-   - Files to modify (exact paths, what changes, whether it's a Langfuse file)
-   - Test strategy (specific test cases in Given/When/Then format)
-   - Key decisions (patterns chosen, what's reused vs. new, with rationale)
-   - Clarifying questions (anything unclear — NEVER assume)
-   - Risks / open questions (ambiguities, deviations from ticket)
-   - Estimated complexity (S/M/L)
-5. DO NOT abbreviate the plan. Include the same level of detail regardless
-   of whether this is for a single ticket or part of a batch.
-6. Return the plan as markdown
-```
+Load `references/planning_agent_prompt.md` as the planning agent prompt template.
 
 ### Step 4: Execute Approved Plans
 
@@ -435,7 +252,7 @@ After plans are approved, proceed with implementation.
    git checkout -b feat/<ticket-key>-<short-description> main
    ```
 
-2. **Execute the TDD loop** using the approved plan (see Implementation Loop below)
+2. **Execute the TDD loop**: Load `references/implementation_loop.md` and follow the 4-phase TDD implementation loop.
 
 3. **Create PR** (see PR Creation below)
 
@@ -448,7 +265,7 @@ FOR each wave:
   # Plans for this wave were already approved in Step 3
   FOR each approved ticket in wave (parallel):
     Agent(
-      prompt: <full implementation prompt with approved plan — see Agent Prompt Template>,
+      prompt: <load references/agent_prompt_template.md as the worktree agent prompt for parallel execution>,
       isolation: "worktree",
       run_in_background: true
     )
@@ -536,77 +353,72 @@ Planning Wave 2 tickets...
 [Shows full detailed Wave 2 plans for approval]
 ```
 
-### Implementation Loop (Core of Each Agent)
+### Step 5: Manual Verification (Optional)
 
-This is the TDD loop that each agent (or the single-ticket path) follows. The ticket description contains all the details; this loop is the execution pattern:
+After the PR is created, invoke the `manual-verify` plugin to validate the implementation via black-box testing. This step is **skipped** when:
 
-#### Phase 1: Write Failing Tests
+- The user passes `--skip-verify` (e.g., `/swe-dev OBS-3 --skip-verify`)
+- The user explicitly declines verification when prompted
+- The ticket is part of a multi-PR set that must be tested together (e.g., a feature that spans multiple tickets and only works once all PRs are merged)
+- The `manual-verify` plugin is not installed
 
-```
-1. Read ticket's "Write failing tests first" section
-2. Create test file at the specified location
-3. Write test cases covering:
-   - Happy path (from Given/When/Then acceptance criteria)
-   - Error/negative path (at least one per ticket)
-   - Tenant isolation (if ticket involves data access)
-   - PRD EARS criteria mapped in the ticket
-4. Run tests to confirm they FAIL:
-   - Web tests: pnpm test --testPathPatterns="<pattern>"
-   - Worker tests: pnpm run test --filter=worker -- <file> -t "<name>"
-5. If tests pass (shouldn't), investigate — the feature shouldn't exist yet
-```
+When skipped, note the reason in the PR description: "Manual verification skipped: [reason]."
 
-#### Phase 2: Implement
+#### When verification runs
 
 ```
-1. Read ticket's "Implement the solution" section
-2. Create/modify files listed in the ticket
-3. Follow the code patterns specified:
-   - Prisma typed client (not $queryRaw)
-   - Zod v4 for validation (import from 'zod/v4')
-   - Error format from stack.md
-   - JSDoc/TSDoc on public functions
-   - No any types, no console.log, no EE imports
-4. If ticket flags a Langfuse file modification:
-   - Make the smallest possible change
-   - Note it for the PR description
+1. Read ticket's "Manual validation" section
+2. Invoke the manual-verify plugin with: ticket_key, pr_numbers, validation_steps,
+   task_type (UI-facing | internal service | BullMQ job), dev_commands
+3. If PASS: record validation results
+4. If FAIL: fix implementation, re-run tests and final checks, push fix, re-invoke
 ```
 
-#### Phase 3: Run Tests and Fix
+#### Multi-ticket / epic mode
 
+Before starting Wave 1, ask the user which verification strategy to use:
+
+- **Option A** (default): Verify each PR individually after creation
+- **Option B** (`--skip-verify`): Skip all; user runs `/manual-verify --pr 42,43,44` after merging
+- **Option C**: Verify only specified tickets; skip rest with reason noted in PR description
+
+The chosen strategy applies to the entire execution run.
+
+### Step 6: Report Results
+
+After all waves complete, output a summary:
+
+```markdown
+## Implementation Summary
+
+### Completed
+| Ticket | Summary | PR | Tests | Validation |
+|--------|---------|-----|-------|------------|
+| OBS-3 | Add SaaS columns via Prisma migration | #12 | 4/4 passing | DB verified |
+| OBS-6 | Add org_id to ClickHouse tables | #13 | 3/3 passing | CH verified |
+| OBS-7 | Add env var validation | #14 | 2/2 passing | Startup verified |
+| OBS-4 | Implement createOrg() | #15 | 6/6 passing | API verified |
+| OBS-5 | Implement getOrg() | #16 | 5/5 passing | API verified |
+
+### Skipped
+| Ticket | Reason |
+|--------|--------|
+| OBS-2 | External Setup task |
+
+### Failed
+| Ticket | Error | Action Needed |
+|--------|-------|---------------|
+| (none) | | |
+
+### Potential Merge Conflicts
+| PR | May Conflict With | Shared File |
+|----|-------------------|-------------|
+| #16 (OBS-5) | #15 (OBS-4) | packages/shared/src/saas/multi-tenancy/index.ts |
+
+*Merge one PR first, then rebase the other. Conflict resolution is your call.*
 ```
-LOOP:
-  1. Run the specific test suite
-  2. Run typecheck: pnpm tc
-  3. Run formatter: pnpm run format
-  4. IF all pass → proceed to Phase 4 (Final Checks)
-  5. IF failures:
-     a. Analyze error output
-     b. Fix the implementation (not the tests, unless the test itself has a bug)
-     c. CONTINUE loop
-  6. IF stuck after 3 iterations on the same error:
-     a. Re-read the RFC section referenced in the ticket
-     b. Check if a Key Invariant or Langfuse Baseline item was missed
-     c. If still stuck, report the error to the user and pause
-```
 
-#### Phase 4: Final Checks
-
-```bash
-# Full typecheck across all packages
-pnpm tc
-
-# Format entire project
-pnpm run format
-
-# Run ALL tests (not just the ones for this ticket)
-pnpm test
-
-# Verify the build succeeds
-pnpm build:check
-```
-
-If any step fails, fix and re-run before proceeding to PR creation.
+---
 
 ### PR Creation
 
@@ -649,225 +461,11 @@ After all checks pass, create a PR:
    )
    ```
 
-### Step 5: Manual Verification (Optional)
-
-After the PR is created, invoke the `manual-verify` plugin to validate the implementation via black-box testing. This step is **skipped** when:
-
-- The user passes `--skip-verify` (e.g., `/swe-dev OBS-3 --skip-verify`)
-- The user explicitly declines verification when prompted
-- The ticket is part of a multi-PR set that must be tested together (e.g., a feature that spans multiple tickets and only works once all PRs are merged)
-- The `manual-verify` plugin is not installed
-
-When skipped, note the reason in the PR description: "Manual verification skipped: [reason]."
-
-#### When verification runs
-
-```
-1. Read ticket's "Manual validation" section
-2. Get the PR number from the PR just created in Step 4
-3. Invoke the manual-verify plugin, passing:
-   - ticket_key: The JIRA ticket key
-   - pr_numbers: The PR number from Step 4
-   - validation_steps: The list of manual validation steps from the ticket description
-   - task_type: The kind of feature (UI-facing, internal service, BullMQ job)
-   - dev_commands: The relevant dev commands (pnpm run dev:web, pnpm run dev:worker, etc.)
-4. Wait for manual-verify to complete and return results
-5. If manual-verify reports PASS:
-   - Record validation results for the implementation summary
-6. If manual-verify reports FAIL:
-   a. Analyze the failure description from manual-verify
-   b. Fix the implementation
-   c. Re-run tests (Phase 3)
-   d. Run final checks (Phase 4)
-   e. Push the fix to the existing PR branch
-   f. Re-invoke manual-verify with the same PR number
-7. Record final validation results
-```
-
-#### Multi-ticket / epic mode
-
-In multi-ticket mode, the user chooses the verification strategy before execution begins:
-
-```
-Before starting Wave 1, ask the user:
-
-"How should manual verification be handled?"
-
-Option A: Verify each PR individually after creation (default)
-  - Each ticket is verified independently after its PR is created
-  - Good when tickets are self-contained features
-
-Option B: Skip verification for all PRs (--skip-verify)
-  - No manual verification for any ticket
-  - Good when the feature only works once all PRs are merged
-  - User can run manual-verify manually later: /manual-verify --pr 42,43,44
-
-Option C: Verify only specific tickets
-  - User specifies which tickets should be verified (e.g., "only verify OBS-4 and OBS-5")
-  - Remaining tickets are skipped with reason noted in PR description
-```
-
-The chosen strategy applies to the entire execution run. For Option B, remind the user they can verify all PRs together after merging using `/manual-verify --pr 42,43,44`.
-
-### Step 6: Report Results
-
-After all waves complete, output a summary:
-
-```markdown
-## Implementation Summary
-
-### Completed
-| Ticket | Summary | PR | Tests | Validation |
-|--------|---------|-----|-------|------------|
-| OBS-3 | Add SaaS columns via Prisma migration | #12 | 4/4 passing | DB verified |
-| OBS-6 | Add org_id to ClickHouse tables | #13 | 3/3 passing | CH verified |
-| OBS-7 | Add env var validation | #14 | 2/2 passing | Startup verified |
-| OBS-4 | Implement createOrg() | #15 | 6/6 passing | API verified |
-| OBS-5 | Implement getOrg() | #16 | 5/5 passing | API verified |
-
-### Skipped
-| Ticket | Reason |
-|--------|--------|
-| OBS-2 | External Setup task |
-
-### Failed
-| Ticket | Error | Action Needed |
-|--------|-------|---------------|
-| (none) | | |
-
-### Potential Merge Conflicts
-| PR | May Conflict With | Shared File |
-|----|-------------------|-------------|
-| #16 (OBS-5) | #15 (OBS-4) | packages/shared/src/saas/multi-tenancy/index.ts |
-
-*Merge one PR first, then rebase the other. Conflict resolution is your call.*
-```
-
----
-
-## Agent Prompt Template
-
-When spawning a worktree agent for parallel execution, use this prompt structure. The approved plan is included so the agent follows the agreed-upon approach:
-
-```
-You are implementing JIRA ticket <TICKET-KEY>.
-
-## Ticket Details
-<paste full ticket description from JIRA>
-
-## Approved Implementation Plan
-<paste the plan that was approved by the user in Step 3>
-
-IMPORTANT: Follow this approved plan exactly. Do not deviate from the agreed-upon
-approach, file paths, or test strategy unless you encounter a technical blocker.
-If you must deviate, document the reason in the PR description.
-
-## Instructions
-
-1. Create a feature branch: feat/<ticket-key>-<short-description>
-2. Read the reference docs listed in the ticket's Context section
-3. Follow the TDD loop using the test cases from the approved plan:
-   a. Write failing tests first (use the Given/When/Then cases from the plan)
-   b. Implement the solution (create/modify the files listed in the plan)
-   c. Run tests until green
-   d. Run typecheck (pnpm tc) and formatter (pnpm run format)
-4. Run final checks (full test suite, build)
-5. Create a PR following .github/PULL_REQUEST_TEMPLATE.md
-6. Transition the JIRA ticket to "In Review"
-7. If manual verification is enabled (not --skip-verify), invoke the manual-verify
-   plugin with:
-   - ticket_key: <TICKET-KEY>
-   - pr_numbers: <the PR number just created>
-   - validation_steps: <manual validation steps from the ticket description>
-   - task_type: <UI-facing | internal service | BullMQ job>
-   - dev_commands: <pnpm run dev:web, pnpm run dev:worker, etc.>
-   If manual-verify reports FAIL, fix the implementation, re-run tests and final
-   checks, push the fix to the PR branch, and re-invoke manual-verify.
-   If --skip-verify, note in the PR description: "Manual verification skipped: [reason]."
-
-## Key Rules
-- Tests BEFORE implementation (TDD is mandatory)
-- No any types, no console.log, no imports from /ee/
-- All queries must include tenant-scoping (org_id or project_id)
-- Follow the error format from stack.md
-- If a Langfuse file modification is flagged, make the smallest possible change
-- Follow the approved plan — do not add scope or change the approach
-
-## JIRA Connection
-- Cloud ID: <cloud-id>
-- Ticket: <ticket-key>
-
-## Git
-- Branch from: <main OR blocker's feature branch, as approved in branching plan>
-- PR target: main
-```
-
 ---
 
 ## Handling Edge Cases
 
-### Ticket has no implementation steps (External Setup)
-
-Some tickets (External Setup) require human action, not code. The skill should:
-- Detect the ticket type from its description or JIRA issue type
-- Skip it with a clear message: "OBS-2 is an External Setup task — requires manual configuration, skipping"
-- Do NOT attempt to implement it
-
-### Ticket is a Terraform/infrastructure task
-
-Terraform tasks (CloudWatch alarms, PagerDuty services, AWS provisioning) should be delegated to the `infra-dev` plugin:
-- Detect Terraform tasks from ticket description (mentions Terraform, CloudWatch alarms, infrastructure provisioning, IaC)
-- Report: "OBS-9 is a Terraform task — delegating to infra-dev plugin"
-- Invoke the `infra-dev` plugin with the ticket details
-- If `infra-dev` is not installed, skip and note: "OBS-9 requires infra-dev plugin (not installed)"
-
-### Ticket references an unimplemented dependency
-
-If a ticket says "Blocked by: OBS-3" and OBS-3 is not yet merged:
-- In single-ticket mode: warn the user and ask if they want to proceed anyway
-- In epic/multi-ticket mode: the wave system handles this automatically (OBS-3 runs in an earlier wave)
-
-### Tests pass on first run (before implementation)
-
-This means either:
-- The feature already exists (check git log)
-- The tests are wrong (not testing what they should)
-- Investigate before proceeding. Report to user.
-
-### Merge conflicts between PRs in the same wave
-
-Merge conflicts between PRs in the same wave are the user's responsibility. The skill does NOT auto-resolve conflicts because:
-- The user should review and approve all conflict resolutions
-- Merging order is a user decision (which PR goes first affects the rebase)
-- Auto-resolution can silently introduce bugs in non-trivial conflicts
-
-When reporting wave results, note which PRs may conflict:
-```
-Note: PR #15 (OBS-4) and PR #16 (OBS-5) both modify
-packages/shared/src/saas/multi-tenancy/index.ts.
-Merge one first, then the other PR may need a rebase.
-```
-
-### Ticket description is missing key sections
-
-If the ticket doesn't follow the expected template (no acceptance criteria, no file paths):
-- Read the RFC and PRD referenced in the ticket to fill in gaps
-- If no RFC is referenced, ask the user for guidance
-- Do NOT guess at implementation details
-
-### Agent fails mid-implementation
-
-If a worktree agent encounters an unrecoverable error:
-- The worktree is preserved (changes are not lost)
-- Report the error, the worktree path, and what was completed
-- The user can resume manually or re-run just that ticket
-
-### Rate limiting on JIRA API
-
-When fetching many tickets for a large epic:
-- Batch API calls where possible (use JQL search instead of individual fetches)
-- If rate limited, wait and retry with backoff
-- Report progress: "Fetched 15/23 tickets..."
+Load `references/edge_cases.md` and check applicable cases.
 
 ---
 
@@ -892,68 +490,4 @@ The skill respects these conventions from the project:
 
 ## Self-Improvement Protocol
 
-This skill tracks corrections and improvements over time. When the user corrects Claude's behavior while this skill is active, the skill writes those observations to an improvement plan file in the marketplace repository. These plans are later reviewed by the skill author to implement permanent changes to the skill.
-
-### During Execution: Monitor for Corrections
-
-While executing this skill's workflow, watch for signals that the user is correcting your behavior:
-
-**Correction signals to watch for:**
-- Direct corrections: "no", "don't do that", "stop", "wrong", "that's not right", "I said..."
-- Redirection: "instead, do X", "I meant Y", "use Z approach"
-- Repeated instructions: the user restating something they already said (indicates you missed it)
-- Frustration indicators: "again", "I already told you", "as I said before"
-- Preference expressions: "I prefer", "always do X", "never do Y"
-- Approval of non-obvious approaches: "yes exactly", "perfect", "that's the right way" (for approaches that were judgment calls, not obvious from the instructions)
-
-**What to capture for each correction:**
-1. **What you did wrong** (or what non-obvious approach worked well)
-2. **What the user wanted instead** (or confirmed as correct)
-3. **Which workflow step it relates to**
-4. **Why the correction matters** (impact on output quality)
-
-### Writing Improvements
-
-After the skill's workflow completes (or at natural breakpoints if the session is long), write or update the improvement plan file at:
-
-```
-/Applications/workspace/gen-ai-projects/utibes-plugins-marketplace/improvement-plans/swe-dev.md
-```
-
-Use this format:
-
-```markdown
-# Improvement Plan: swe-dev
-
-Last updated: {date}
-Total lessons: {count}
-
-## Lessons Learned
-
-### Lesson {N}: {short title}
-- **Date:** {date}
-- **Workflow Step:** {step name/number}
-- **What happened:** {what you did that was corrected, or what approach was confirmed}
-- **What to do instead:** {the correct behavior, or the confirmed approach to keep using}
-- **Why:** {why this matters for output quality}
-
-## Patterns to Watch For
-
-{Summarize recurring themes from the lessons above. For example, if the user has corrected planning scope multiple times, note: "User wants minimal plans that match ticket scope exactly. Do not add extra scope."}
-
-## Proposed Skill Changes
-
-{If a lesson is clear and repeated enough to warrant a permanent change to the SKILL.md instructions, document the proposed change here. Include which section to modify and the suggested new wording.}
-
-| # | Section | Current Behavior | Proposed Change | Based on Lessons |
-|---|---------|-----------------|-----------------|------------------|
-| 1 | {section} | {what the skill currently says} | {what it should say} | Lessons {N, M} |
-```
-
-### Rules
-
-1. **Never modify SKILL.md directly.** All improvements go to the improvement plan file as proposals for the skill author.
-2. **Be specific.** "User didn't like the plan" is useless. "User wants test cases written as exact function signatures, not prose descriptions" is actionable.
-3. **Capture successes too.** If you made a judgment call and the user confirmed it was right, record that as a positive lesson so future sessions maintain that behavior.
-4. **Deduplicate.** If a new correction matches an existing lesson, update the existing lesson's count or add context rather than creating a duplicate.
-5. **Keep it concise.** Target under 50 lessons; if it grows beyond that, consolidate related lessons into patterns.
+Load `references/self_improvement_protocol.md` and follow the protocol described there for monitoring corrections and writing improvement plans.

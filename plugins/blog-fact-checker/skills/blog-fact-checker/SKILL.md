@@ -1,6 +1,7 @@
 ---
 name: blog-fact-checker
 description: This skill should be used when verifying blog posts or articles sentence by sentence, outputting a comprehensive verification table in chat. Triggers on requests like "fact-check this blog post", "verify my blog", "/blog-fact-checker [file-path]", or when users want to validate all claims in markdown content. Supports technical blogs, news articles, historical content, and general knowledge posts.
+argument-hint: "[file-path]"
 ---
 
 # Blog Fact Checker

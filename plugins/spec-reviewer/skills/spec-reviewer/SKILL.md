@@ -1,6 +1,7 @@
 ---
 name: spec-reviewer
 description: This skill should be used when reviewing PRD or RFC specification documents for security vulnerabilities, cross-spec security regression, completeness gaps, cross-spec consistency, redundancy against existing specs and codebase, functional regression risks, operational readiness, clarity, and feasibility issues. Triggers on requests like "review this spec", "audit the billing RFC", "check the notification PRD for security issues", "review .specs/billing-service/02-RFC-billing-service.md", "/spec-reviewer .specs/billing-service/", "/spec-reviewer --security-only .specs/auth/01-RFC-auth.md", "is this spec ready for implementation?", "threat model the payment service spec", "what's missing from this RFC?", "does this spec duplicate anything?", "will this break existing services?", "check for redundancy", or when users want to validate specs before implementation. Supports --security-only, --dimension, --severity-threshold, --no-gates, and --output flags.
+argument-hint: "[spec-path] [--dimension NAME] [--security-only] [--no-gates] [--output PATH]"
 ---
 
 # Spec Reviewer: Security, Completeness, Consistency, and Regression Audit
@@ -138,80 +139,7 @@ Read `references/review_dimensions.md` to load the full checklist for each dimen
 
 Skip if `--dimension` is set to something other than `security`.
 
-Load the Security section from `references/review_dimensions.md` and evaluate the spec against every applicable checklist item.
-
-#### 2a. Authentication and Authorization Audit
-
-For every endpoint, function, or event handler in the spec:
-- Is authentication required? If not, is the omission justified?
-- Is authorization checked? (role, permission, ownership)
-- Can a user access resources belonging to another user or tenant?
-
-Flag any endpoint without explicit auth specification as a finding.
-
-#### 2b. Data Protection Audit
-
-For every data field in the data model:
-- Classify sensitivity (PII, PHI, financial, credential, public)
-- Check if encryption at rest is specified for sensitive fields
-- Check if the field appears in any log output or error response
-- Check if the field is exposed in API responses that it should not be
-
-#### 2c. Input Validation and Injection Audit
-
-For every input surface (API params, webhook payloads, file uploads, event payloads):
-- Is validation specified? (type, format, length, range)
-- Are parameterized queries or ORM used for database access?
-- Is user-supplied content sanitized before output?
-
-#### 2d. Secrets Management Audit
-
-Scan the entire spec for:
-- Hardcoded values that look like credentials or keys
-- Environment variables that should be marked as secret but are not
-- Missing secret rotation strategy
-
-#### 2e. API Security Audit
-
-For every external-facing endpoint:
-- Rate limiting specified?
-- Request size limits?
-- CORS policy?
-- Webhook signature validation?
-- Idempotency for mutating operations?
-
-#### 2f. Multi-Tenancy Audit
-
-If the service is multi-tenant:
-- Do all queries filter by tenant ID?
-- Are there any data flows where tenant isolation could be bypassed?
-- Are admin/cross-tenant operations explicitly flagged?
-
-#### 2g. Threat Model (STRIDE)
-
-Apply the STRIDE framework to the spec's architecture:
-- **Spoofing**: Evaluate authentication mechanisms
-- **Tampering**: Evaluate data integrity controls
-- **Repudiation**: Evaluate audit logging
-- **Information Disclosure**: Evaluate data exposure paths
-- **Denial of Service**: Evaluate resource bounds and timeouts
-- **Elevation of Privilege**: Evaluate authorization boundaries
-
-For each STRIDE category, produce findings or note "No issues identified."
-
-#### 2h. Cross-Spec Security Regression
-
-This is the most critical security sub-step. Evaluate how the new spec interacts with existing specs and the existing codebase to identify security vulnerabilities that only emerge from the combination.
-
-Load the "Cross-Spec Security Regression" section from `references/review_dimensions.md` and check every item:
-
-1. **Trust boundary erosion**: Does the new service accept pre-validated data from another service and use it unsafely? Does it expose an internal service's data through a weaker interface?
-2. **Privilege escalation paths**: Does the new service create a chain where low-privilege calls escalate to high-privilege operations? Does it grant broader permissions than existing services for the same resources?
-3. **Data exposure amplification**: Does the new service aggregate, cache, or replicate sensitive data from multiple existing services, creating a higher-value target? Does it log or emit data that existing services protect?
-4. **Attack surface expansion**: Does the new service expose new endpoints that proxy to internal services? Does it add weaker auth methods?
-5. **Tenant isolation regression**: Does the new service maintain tenant isolation when interacting with existing services? Does it create cross-tenant data flows that did not exist before?
-
-For each interaction between the new spec and an existing spec, document the trust boundary and check both directions. A finding in this section is always High or Critical severity.
+Load the Security section from `references/review_dimensions.md` and evaluate the spec against every applicable checklist item. This covers: authentication and authorization for every endpoint, data protection and encryption for sensitive fields, input validation and injection prevention, secrets management, API security controls (rate limiting, CORS, idempotency), multi-tenancy isolation, STRIDE threat modeling, and cross-spec security regression (the most critical sub-step, checking for trust boundary erosion, privilege escalation paths, data exposure amplification, and tenant isolation regression across service boundaries). A finding in the cross-spec security regression section is always High or Critical severity.
 
 **Output:** Present all security findings in a table (see Step 9 for format). Ask the user if they want to proceed to the next dimension or discuss any findings.
 
@@ -223,49 +151,7 @@ For each interaction between the new spec and an existing spec, document the tru
 
 Skip if `--dimension` is set to something other than `completeness`.
 
-Load the Completeness section from `references/review_dimensions.md`.
-
-#### 3a. PRD Completeness
-
-For each PRD being reviewed:
-
-1. **Goals**: Are they measurable? Can you objectively determine if the goal was met?
-2. **Non-Goals**: Are they specific enough to prevent scope creep?
-3. **Functional Requirements**:
-   - Does every requirement have EARS criteria?
-   - Do criteria cover the happy path?
-   - Do criteria cover error/failure paths?
-   - Do criteria cover edge cases? (empty inputs, boundary values, concurrent access)
-4. **NFRs**: Are they quantified? (e.g., "p95 < 300ms" not "fast")
-5. **External Integrations**: Is there enough detail to implement each integration?
-6. **Constraints**: Are they traceable to a source?
-7. **Open Questions**: Are any critical enough to block implementation?
-
-#### 3b. RFC Completeness
-
-For each RFC being reviewed:
-
-1. **Traceability**: Does every PRD requirement have a corresponding RFC section?
-2. **Public Interface**: Are all params, return types, and error types defined?
-3. **Data Model**: Does it cover all entities mentioned in the PRD?
-4. **Indexes**: Are they justified by query patterns in the data flows?
-5. **Data Flows**: Are all significant paths documented (not just happy path)?
-6. **Error Handling**: Does the error table cover all failure modes from the data flows?
-7. **Environment Variables**: Are all config values listed?
-8. **Key Invariants**: Are they stated with MUST/MUST NOT language?
-9. **Dependencies**: Are both upstream and downstream listed?
-10. **Implementation Phases**: Are they independently deployable?
-11. **Testing**: Are requirements specific to this service (not generic)?
-
-#### 3c. Missing Scenarios
-
-Check for common blind spots:
-- Deployment and migration behavior
-- Partial system failure handling
-- External dependency unavailability
-- Behavior at scale boundaries
-- Concurrent request handling
-- Data migration for schema changes
+Load the Completeness section from `references/review_dimensions.md`. Check PRD completeness (measurable goals, specific non-goals, EARS criteria covering happy path, error paths, and edge cases, quantified NFRs, and open questions that could block implementation) and RFC completeness (traceability to PRD requirements, fully typed public interface, data model coverage, index justification, complete data flows, error table coverage, environment variables, invariants, dependency lists, independently deployable phases, and service-specific testing requirements). Also check for missing scenarios such as deployment behavior, partial failure handling, external dependency unavailability, and concurrent request handling.
 
 **Output:** Present completeness findings. Ask if the user wants to proceed.
 
@@ -277,52 +163,7 @@ Check for common blind spots:
 
 Skip if `--dimension` is set to something other than `consistency`.
 
-Load the Consistency section from `references/review_dimensions.md`.
-
-#### 4a. Internal Consistency (PRD to RFC)
-
-If both a PRD and RFC exist for the service:
-
-1. Map every PRD functional requirement to an RFC section. Flag any requirement without a corresponding implementation.
-2. Verify API response shapes match data model fields.
-3. Verify error codes referenced in data flows match the error handling table.
-4. Check naming conventions throughout: field names, endpoint paths, event names.
-
-#### 4b. Cross-Spec Dangling References
-
-Using the cross-spec map built in Step 1c, check references in both directions:
-
-**New spec references that don't resolve:**
-1. For each function/endpoint the new spec calls on another service (in Dependencies, Data Flows, or Public Interface sections), verify that the target service's spec actually exports that function/endpoint with a matching signature
-2. For each event the new spec consumes, verify that some existing spec publishes it
-3. For each external entity reference (table owned by another service), verify the owning service's spec defines that table
-4. For each downstream dependency listed, verify the target service exists (has a spec or codebase implementation)
-
-**Existing specs that reference the new service but the new spec doesn't fulfill:**
-1. Scan all existing specs' Dependencies sections for references to the new service's name or domain
-2. For each function/endpoint existing specs expect from the new service, verify the new spec exports it in its Public Interface
-3. For each event existing specs consume that the new service should publish (based on its responsibilities), verify the new spec defines that event
-4. For each table existing specs reference as owned by the new service, verify the new spec's data model defines it
-
-A dangling reference in a data flow step is Critical (implementation will fail at that step). An unresolved dependency is High. An unmatched event is Medium.
-
-#### 4c. Cross-Spec Consistency
-
-Using the cross-spec map built in Step 1c:
-
-1. **Data ownership conflicts**: Does this spec define tables/collections that another service already owns?
-2. **Interface duplication**: Does this spec export functions that overlap with another service's public interface?
-3. **External service wrapping**: Does this spec directly call an external service that another module wraps exclusively?
-4. **Dependency direction conflicts**: Does this spec declare dependencies that contradict what other specs say?
-5. **Convention mismatches**: Do error formats, ID conventions, and auth patterns match the established project patterns?
-
-#### 4d. Constitution and Invariants Compliance
-
-If a constitution or global invariants document exists:
-
-1. Check every design decision against the constitution rules
-2. Check every technical choice against the global engineering standards
-3. Flag any deviation, even if it seems reasonable (the author should explicitly acknowledge deviations)
+Load the Consistency section from `references/review_dimensions.md`. Check internal consistency between PRD and RFC (requirement traceability, response shapes matching data model, error codes matching data flows, naming conventions), cross-spec dangling references in both directions (references the new spec makes to other services that don't resolve, and references existing specs make to the new service that it doesn't fulfill), cross-spec consistency (data ownership conflicts, interface duplication, external service wrapping, dependency direction conflicts, and convention mismatches), and constitution/invariants compliance (every design decision against the project's rules and engineering standards).
 
 **Output:** Present consistency findings. Ask if the user wants to proceed.
 
@@ -334,50 +175,7 @@ If a constitution or global invariants document exists:
 
 Skip if `--dimension` is set to something other than `redundancy`.
 
-Load the Redundancy section from `references/review_dimensions.md`.
-
-#### 5a. Responsibility Redundancy (Spec vs Spec)
-
-For each responsibility listed in the new spec's RFC:
-
-1. Check whether any existing spec already claims that responsibility
-2. Check whether the new service's responsibilities could be added as features to an existing service instead of creating a new service
-3. Flag any parallel path for an operation that already has a defined path through existing services
-
-For each overlap, classify:
-- **Full overlap**: The new service does exactly what an existing service does (Critical)
-- **Partial overlap**: Some responsibilities overlap, some are new (High if core overlap, Medium if peripheral)
-- **Intentional duplication**: The spec acknowledges the overlap and provides justification (Info)
-
-#### 5b. Data Redundancy (Spec vs Spec)
-
-For each table/collection in the new spec's data model:
-
-1. Check whether an existing spec already owns a table with the same name or the same data
-2. Check whether the new spec stores data that could be read from an existing service's public interface instead
-3. If data duplication is intentional (caching, materialized views), verify that a sync/invalidation strategy is defined
-
-#### 5c. Interface Redundancy (Spec vs Spec)
-
-For each function/endpoint in the new spec's public interface:
-
-1. Check whether an existing spec exports a function or endpoint that returns the same data or performs the same action
-2. If the new interface is a convenience wrapper (BFF pattern, aggregation), verify it is documented as such and not as a new capability
-
-#### 5d. Codebase Redundancy (Spec vs Existing Code)
-
-Using the implementation map built in Step 1c:
-
-1. **Existing implementations**: Flag every capability in the spec that already exists as working code. Include the file path and function/class name.
-2. **Existing data models**: Flag every table or schema in the spec that already exists in migrations or ORM definitions. Include the file path.
-3. **Existing integrations**: Flag every external service wrapper in the spec that already exists in the codebase. Include the file path.
-4. **Existing utilities**: Flag every shared utility (validation, error handling, auth middleware) in the spec that already exists. Include the file path.
-
-For each codebase redundancy finding, recommend one of:
-- **Reuse**: Import the existing code instead of reimplementing
-- **Extend**: Add the new capability to the existing module
-- **Replace**: The spec intentionally supersedes the existing code (requires a migration plan)
-- **Justify**: The duplication is intentional for a specific reason (e.g., isolation, different deployment target)
+Load the Redundancy section from `references/review_dimensions.md`. Check responsibility redundancy against other specs (full overlap, partial overlap, or intentional duplication with justification), data redundancy (tables that already exist in other specs, data that could be read from an existing service's interface), interface redundancy (endpoints that duplicate existing service exports), and codebase redundancy (capabilities, data models, integrations, and utilities that already exist as working code, including file path and function/class name). For each codebase redundancy finding, recommend one of: Reuse, Extend, Replace, or Justify.
 
 **Output:** Present redundancy findings. Ask if the user wants to proceed.
 
@@ -391,46 +189,7 @@ Skip if `--dimension` is set to something other than `regression`.
 
 Load the Functional Regression section from `references/review_dimensions.md`.
 
-This step evaluates whether implementing the new spec would break or degrade existing functionality.
-
-#### 6a. Behavioral Contract Violations
-
-For each API endpoint, function signature, event schema, or data contract defined in the new spec:
-
-1. Check if it modifies an existing contract (adds required fields, changes types, renames fields, removes fields)
-2. Check if it changes the semantics of a status code, error response, or state value
-3. Check if it changes default values or nullability of shared fields
-4. For each violation, identify which existing consumers would break and how
-
-#### 6b. Data Flow Disruption
-
-For each data flow described in the new spec:
-
-1. Check if the new service inserts itself into an existing call chain (A calls B becomes A calls New calls B)
-2. Check if this introduces a new failure mode into a previously stable path
-3. Check if the new service changes ordering guarantees for events or queues
-4. Check if the new service writes to a shared resource (database, cache, queue) that existing services also write to, creating conflict potential
-
-#### 6c. Migration and Cutover Risks
-
-1. Does the new spec require a data migration? If so, can existing services continue operating during the migration?
-2. Does the new spec require simultaneous deployment of multiple services? (big-bang risk)
-3. Is there a transition period where old and new behavior coexist? Is the coexistence strategy defined?
-4. Does the new spec deprecate existing endpoints or functions? Is the deprecation timeline and migration path defined?
-
-#### 6d. Performance Regression
-
-1. Does the new service add latency to an existing hot path? (extra hop, new middleware, new validation)
-2. Does the new service increase load on shared infrastructure? (database, cache, queue, external APIs)
-3. Does the new service introduce fan-out or N+1 patterns that affect shared resources?
-4. Check the new spec's SLA guarantees against its dependencies: can it meet its stated targets given the latency of services it depends on?
-
-#### 6e. Backward Compatibility
-
-1. Are all API changes additive? (new optional fields, new endpoints, new event types)
-2. If breaking changes exist, is a versioning strategy defined? (v1/v2 coexistence, sunset timeline)
-3. Are database schema changes compatible with currently deployed code? (rolling deploy safety)
-4. Are feature flags defined for risky behavioral changes?
+This step evaluates whether implementing the new spec would break or degrade existing functionality. Check behavioral contract violations (modified API contracts, changed semantics, altered defaults/nullability), data flow disruption (new service inserting into existing call chains, changed ordering guarantees, conflicts on shared resources), migration and cutover risks (rolling-deploy safety, coexistence strategy, deprecation timelines), performance regression (latency added to hot paths, increased load on shared infrastructure, fan-out patterns, SLA feasibility given dependency latency), and backward compatibility (additive-only API changes, versioning strategy for breaking changes, feature flags for risky changes).
 
 **Output:** Present functional regression findings. Ask if the user wants to proceed.
 
@@ -442,38 +201,7 @@ For each data flow described in the new spec:
 
 Skip if `--dimension` is set to something other than `operational`.
 
-Load the Operational Readiness section from `references/review_dimensions.md`.
-
-#### 5a. Observability
-
-- Is structured logging specified?
-- Are health check endpoints defined?
-- Are key metrics identified?
-- Are alert thresholds defined for critical operations?
-- Is distributed tracing addressed?
-
-#### 5b. Deployment
-
-- Is the deployment strategy defined?
-- Are database migrations addressed?
-- Is backward compatibility considered for API changes?
-- Is a rollback plan defined?
-- Are feature flags considered for risky features?
-
-#### 5c. Incident Response
-
-- Is graceful degradation defined for dependency failures?
-- Are circuit breakers or fallbacks specified?
-- Are retry policies defined with backoff?
-- Are timeout values specified for external calls?
-- Is there an escalation path?
-
-#### 5d. Data Operations
-
-- Is backup and recovery addressed?
-- Are data migrations addressed for schema changes?
-- Is data archival specified?
-- Are connection pooling and limits considered?
+Load the Operational Readiness section from `references/review_dimensions.md`. Check observability (structured logging, health checks, metrics, alert thresholds, distributed tracing), deployment (deployment strategy, migration handling, rollback plan, feature flags), incident response (graceful degradation, circuit breakers, retry policies with backoff, timeout values, escalation path), and data operations (backup and recovery, schema migration safety, archival, connection pooling).
 
 **Output:** Present operational readiness findings. Ask if the user wants to proceed.
 
@@ -485,22 +213,7 @@ Load the Operational Readiness section from `references/review_dimensions.md`.
 
 Skip dimensions not selected by `--dimension`.
 
-#### 6a. Clarity
-
-- Flag vague terms: "fast", "secure", "scalable", "robust", "appropriate", "as needed"
-- Flag unquantified values: timeouts, limits, thresholds, TTLs without numbers
-- Flag ambiguous conditionals: "if applicable" without defining when it applies
-- Check that every EARS criterion is testable as written
-- Identify contradictions between sections
-
-#### 6b. Feasibility
-
-- Are there circular dependencies in the design?
-- Are there single points of failure?
-- Can the system meet stated performance targets given the design?
-- Are there potential race conditions in the data flows?
-- Is the MVP scope realistic for the number of external integrations and data flows?
-- Are implementation phases ordered by dependency and risk?
+Load the Clarity and Feasibility sections from `references/review_dimensions.md`. For clarity, flag vague terms (fast, secure, scalable, robust), unquantified values (timeouts, limits, thresholds without numbers), ambiguous conditionals, untestable EARS criteria, and contradictions between sections. For feasibility, check for circular dependencies, single points of failure, whether performance targets are achievable given the design, potential race conditions, realistic MVP scope, and whether implementation phases are ordered by dependency and risk.
 
 **Output:** Present clarity and feasibility findings. Ask if the user wants to proceed to the final report.
 
@@ -512,115 +225,7 @@ Skip dimensions not selected by `--dimension`.
 
 Compile all findings into a structured report. Apply the `--severity-threshold` filter if set.
 
-#### Report Format
-
-```markdown
-# Spec Review: {Service Name}
-
-**Reviewed:** {list of files reviewed}
-**Date:** {today's date}
-**Dimensions:** {all / specific dimension}
-**Reviewer:** Claude (spec-reviewer)
-
-## Summary
-
-| Dimension | Critical | High | Medium | Low | Info |
-|-----------|----------|------|--------|-----|------|
-| Security | N | N | N | N | N |
-| Completeness | N | N | N | N | N |
-| Consistency | N | N | N | N | N |
-| Redundancy | N | N | N | N | N |
-| Functional Regression | N | N | N | N | N |
-| Operational Readiness | N | N | N | N | N |
-| Clarity | N | N | N | N | N |
-| Feasibility | N | N | N | N | N |
-| **Total** | **N** | **N** | **N** | **N** | **N** |
-
-## Verdict
-
-{One of:}
-- **BLOCKED**: N critical findings must be resolved before implementation
-- **CONDITIONAL**: No critical findings, but N high findings should be addressed first
-- **APPROVED WITH NOTES**: No critical or high findings; medium/low items can be addressed during implementation
-- **APPROVED**: No significant findings
-
-## Findings
-
-### Critical
-
-| # | Dimension | Section | Finding | Recommendation |
-|---|-----------|---------|---------|----------------|
-| 1 | Security | Data Model | Tenant isolation not enforced: `invoices` table has no `org_id` column, allowing cross-tenant data access | Add `org_id TEXT NOT NULL` column with foreign key constraint and add to every query's WHERE clause |
-
-### High
-
-| # | Dimension | Section | Finding | Recommendation |
-|---|-----------|---------|---------|----------------|
-| 2 | Completeness | Error Handling | No error defined for external payment provider timeout; data flow step 3 references Stripe but error table has no `ExternalServiceError` | Add `ExternalServiceError (502)` to error table with retry guidance for consumers |
-
-### Medium
-
-| # | Dimension | Section | Finding | Recommendation |
-|---|-----------|---------|---------|----------------|
-| 3 | Clarity | NFRs | Performance requirement says "low latency" without specifying a target | Replace with measurable target: "p95 < 300ms for read operations, p95 < 500ms for writes" |
-
-### Low
-
-| # | Dimension | Section | Finding | Recommendation |
-|---|-----------|---------|---------|----------------|
-| 4 | Consistency | Naming | RFC uses `userId` but PRD uses `user_id` in EARS criteria | Standardize on one convention (recommend `user_id` to match database schema) |
-
-### Info
-
-| # | Dimension | Section | Finding | Recommendation |
-|---|-----------|---------|---------|----------------|
-| 5 | Feasibility | Implementation Phases | Phase 1 includes 4 external integrations which may be ambitious for a single phase | Consider splitting external integrations across Phase 1 (core provider) and Phase 2 (secondary providers) |
-
-## Security Threat Summary
-
-{Only included when security dimension is reviewed}
-
-| STRIDE Category | Status | Notes |
-|-----------------|--------|-------|
-| Spoofing | {PASS / RISK} | {Brief note} |
-| Tampering | {PASS / RISK} | {Brief note} |
-| Repudiation | {PASS / RISK} | {Brief note} |
-| Information Disclosure | {PASS / RISK} | {Brief note} |
-| Denial of Service | {PASS / RISK} | {Brief note} |
-| Elevation of Privilege | {PASS / RISK} | {Brief note} |
-
-## Cross-Spec Impact
-
-{Only included when consistency dimension is reviewed and other specs exist}
-
-| Other Spec | Issue | Required Action |
-|------------|-------|-----------------|
-| {spec path} | {what is inconsistent} | {what needs to change} |
-
-## Redundancy Map
-
-{Only included when redundancy dimension is reviewed}
-
-| New Spec Element | Existing Duplicate | Location | Recommendation |
-|-----------------|-------------------|----------|----------------|
-| {table/function/endpoint} | {what already exists} | {spec path or codebase file path} | Reuse / Extend / Replace / Justify |
-
-## Regression Risk Assessment
-
-{Only included when regression dimension is reviewed}
-
-| Existing Component | Risk Type | Impact | Mitigation Required |
-|-------------------|-----------|--------|---------------------|
-| {service/endpoint/flow} | {contract violation / data flow disruption / performance / migration} | {what breaks and for whom} | {versioning plan / feature flag / migration strategy / rollback plan} |
-
-## Next Steps
-
-{Tailored based on verdict:}
-- BLOCKED: "Resolve the N critical findings before proceeding. Run `/spec-reviewer` again after fixes."
-- CONDITIONAL: "Address the high-severity findings, then proceed to implementation. Medium/low items can be tracked as tech debt."
-- APPROVED WITH NOTES: "Proceed to implementation. Consider addressing medium findings during the relevant implementation phase."
-- APPROVED: "Spec is ready for implementation. Proceed to `/rfc-to-jira {RFC path}` to create tickets."
-```
+Load `references/report_template.md` for the full report format and compile the report following that structure.
 
 #### Present the Report
 
@@ -704,68 +309,4 @@ If the user provides a path containing specs for multiple services, review each 
 
 ## Self-Improvement Protocol
 
-This skill tracks corrections and improvements over time. When the user corrects Claude's behavior while this skill is active, the skill writes those observations to an improvement plan file in the marketplace repository. These plans are later reviewed by the skill author to implement permanent changes to the skill.
-
-### During Execution: Monitor for Corrections
-
-While executing this skill's workflow, watch for signals that the user is correcting your behavior:
-
-**Correction signals to watch for:**
-- Direct corrections: "no", "don't do that", "stop", "wrong", "that's not right", "I said..."
-- Redirection: "instead, do X", "I meant Y", "use Z approach"
-- Repeated instructions: the user restating something they already said (indicates you missed it)
-- Frustration indicators: "again", "I already told you", "as I said before"
-- Preference expressions: "I prefer", "always do X", "never do Y"
-- Approval of non-obvious approaches: "yes exactly", "perfect", "that's the right way" (for approaches that were judgment calls, not obvious from the instructions)
-
-**What to capture for each correction:**
-1. **What you did wrong** (or what non-obvious approach worked well)
-2. **What the user wanted instead** (or confirmed as correct)
-3. **Which workflow step it relates to**
-4. **Why the correction matters** (impact on output quality)
-
-### Writing Improvements
-
-After the skill's workflow completes (or at natural breakpoints if the session is long), write or update the improvement plan file at:
-
-```
-/Applications/workspace/gen-ai-projects/utibes-plugins-marketplace/improvement-plans/spec-reviewer.md
-```
-
-Use this format:
-
-```markdown
-# Improvement Plan: spec-reviewer
-
-Last updated: {date}
-Total lessons: {count}
-
-## Lessons Learned
-
-### Lesson {N}: {short title}
-- **Date:** {date}
-- **Workflow Step:** {step name/number}
-- **What happened:** {what you did that was corrected, or what approach was confirmed}
-- **What to do instead:** {the correct behavior, or the confirmed approach to keep using}
-- **Why:** {why this matters for output quality}
-
-## Patterns to Watch For
-
-{Summarize recurring themes from the lessons above. For example, if the user has corrected severity ratings multiple times, note: "User considers tenant isolation gaps as always Critical, never High."}
-
-## Proposed Skill Changes
-
-{If a lesson is clear and repeated enough to warrant a permanent change to the SKILL.md instructions, document the proposed change here. Include which section to modify and the suggested new wording.}
-
-| # | Section | Current Behavior | Proposed Change | Based on Lessons |
-|---|---------|-----------------|-----------------|------------------|
-| 1 | {section} | {what the skill currently says} | {what it should say} | Lessons {N, M} |
-```
-
-### Rules
-
-1. **Never modify SKILL.md directly.** All improvements go to the improvement plan file as proposals for the skill author.
-2. **Be specific.** "User disagreed with a finding" is useless. "User considers missing pagination a Low finding, not Medium, for internal-only APIs" is actionable.
-3. **Capture successes too.** If you made a judgment call and the user confirmed it was right, record that as a positive lesson so future sessions maintain that behavior.
-4. **Deduplicate.** If a new correction matches an existing lesson, update the existing lesson's count or add context rather than creating a duplicate.
-5. **Keep it concise.** Target under 50 lessons; if it grows beyond that, consolidate related lessons into patterns.
+Load `references/self_improvement_protocol.md` and follow the protocol described there for monitoring corrections and writing improvement plans.
