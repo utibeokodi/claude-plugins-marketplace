@@ -144,11 +144,20 @@ If a codebase exists, explore it to understand:
 6. **Data models**: Look for schema files (Prisma schema, SQL migrations, ORM models, etc.)
 7. **Existing similar services**: If the user is building a "billing service" and there's already a "subscription service", read its spec for conventions
 
-Determine and note: the tech stack, whether a constitution exists (specs MUST conform), whether global invariants/engineering standards exist (specs must adopt them), whether existing spec documents exist (use their style as reference), the repository structure, and adjacent services the new service will integrate with.
+Determine and note:
+- The tech stack (language, framework, database, message queue, etc.)
+- Whether a constitution exists (specs MUST conform to it)
+- Whether global invariants/engineering standards exist (specs must adopt them)
+- Whether existing spec documents exist (use their style as reference)
+- The repository structure (monorepo, polyrepo, single service)
+- Adjacent services that the new service will integrate with
 
 If a constitution or global invariants were found, inform the user: "I found a project constitution at `{path}` and global engineering standards at `{path}`. All generated specs will conform to these rules. I'll flag any areas where the new service may require changes to either document."
 
-**Output at end of Step 2:** Briefly summarize what was learned and acknowledge any tech stack or conventions already discovered so the user doesn't need to repeat them.
+**Output at end of Step 2:**
+Briefly summarize what was learned: "I've researched [service type] patterns and explored your codebase. I can see you're using [tech stack] with a [structure]. Now I have some questions to nail down the requirements."
+
+If the codebase exploration revealed the tech stack and conventions, acknowledge what was already discovered so the user doesn't need to repeat it.
 
 ---
 
